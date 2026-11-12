@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "hookshot-workbench-observe": {
+      "command": "uv",
+      "args": ["run", "--project", "/absolute/path/to/workbench/mcp", "hookshot-workbench"],
+      "env": {
+        "UV_CACHE_DIR": "/absolute/path/to/workbench/.uv-cache",
+        "UV_PYTHON_INSTALL_DIR": "/absolute/path/to/workbench/.uv-cache/python",
+        "HOOKSHOT_WB_PROFILE": "observe"
+      }
+    },
+    "hookshot-workbench-operate": {
+      "command": "uv",
+      "args": ["run", "--project", "/absolute/path/to/workbench/mcp", "hookshot-workbench"],
+      "env": {
+        "UV_CACHE_DIR": "/absolute/path/to/workbench/.uv-cache",
+        "UV_PYTHON_INSTALL_DIR": "/absolute/path/to/workbench/.uv-cache/python",
+        "HOOKSHOT_WB_PROFILE": "operate"
+      }
+    }
+  }
+}
