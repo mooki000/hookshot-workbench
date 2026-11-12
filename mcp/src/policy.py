@@ -54,6 +54,7 @@ class PeriodRule(Record):
     lanes: list[Literal["gpu", "intel", "build", "idle"]] = Field(default_factory=list)
     classes: list[Literal["ordinary", "whole"]] = Field(default_factory=list)
     max_hold_seconds: int = Field(default=480, ge=1, le=480)
+    max_cpu_seconds: int = Field(default=480, ge=1, le=86400)
 
 
 class Authorization(Record):
@@ -63,6 +64,7 @@ class Authorization(Record):
     resource_class: Literal["ordinary", "whole", "exclusive", "priority"]
     expires_at: datetime
     max_hold_seconds: int = Field(ge=1, le=480)
+    max_cpu_seconds: int = Field(default=480, ge=1, le=86400)
 
 
 class OperatorPolicy(Record):
@@ -124,11 +126,13 @@ class Policy:
         local = datetime.now().astimezone()
         period = "day" if policy.day_start_hour <= local.hour < policy.night_start_hour else "night"
         rule = getattr(policy, period)
-        allowed = lane in rule.lanes and resource_class in rule.classes and 0 < wall_seconds <= rule.max_hold_seconds
+        limit = rule.max_cpu_seconds if lane in {"build", "idle"} else rule.max_hold_seconds
+        allowed = lane in rule.lanes and resource_class in rule.classes and 0 < wall_seconds <= limit
         if authorization:
             allowed = any(a.id == authorization and a.plan_hash == plan_hash and a.lane == lane
                 and a.resource_class == resource_class and a.expires_at > datetime.now(timezone.utc)
-                and 0 < wall_seconds <= a.max_hold_seconds for a in policy.authorizations)
+                and 0 < wall_seconds <= (a.max_cpu_seconds if lane in {"build", "idle"} else a.max_hold_seconds)
+                for a in policy.authorizations)
         if not allowed or source != "operator":
             raise fail("refused_by_policy", "policy_" + stage)
         return PolicySnapshot(revision=revision, observed_at=utc_now(), source=source, period=period,

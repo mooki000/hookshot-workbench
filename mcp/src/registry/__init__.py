@@ -36,7 +36,7 @@ def _valid_id(value: str, kind: str) -> None:
 
 
 def _page(limit: int, cursor: int) -> None:
-    if not 1 <= limit <= MAX_PAGE or cursor < 0:
+    if not 1 <= limit <= MAX_PAGE or not 0 <= cursor <= 9223372036854775807:
         raise fail("invalid_argument", "registry_read")
 
 
@@ -58,9 +58,10 @@ class Registry:
             db.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             yield db
             db.commit()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
             db.rollback()
-            raise fail("busy", "registry", retryable=True) from None
+            busy = getattr(exc, "sqlite_errorcode", None) in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+            raise fail("busy" if busy else "backend_failed", "registry", retryable=busy) from None
         except BaseException:
             db.rollback()
             raise
@@ -182,6 +183,14 @@ class Registry:
             self._job(db, job_id)
             return self._event(db, job_id, kind, data)
 
+    def latest_event(self, job_id: str, kind: str) -> Event | None:
+        with self._db() as db:
+            self._job(db, job_id)
+            row = db.execute("SELECT * FROM events WHERE job_id=? AND kind=? ORDER BY seq DESC LIMIT 1",
+                             (job_id, kind)).fetchone()
+            return Event(cursor=row["seq"], job_id=job_id, observed_at=row["observed_at"],
+                         kind=row["kind"], data=json.loads(row["data"])) if row else None
+
     def events(self, job_id: str, *, cursor: int = 0, limit: int = 50) -> EventPage:
         _page(limit, cursor)
         with self._db() as db:
@@ -201,10 +210,31 @@ class Registry:
             db.execute("UPDATE jobs SET process=?,supervisor=? WHERE id=?", (process.model_dump_json(), supervisor.model_dump_json(), job_id))
             self._event(db, job_id, "process_started", {"pid": process.pid, "start_ticks": process.start_ticks})
 
+    def bind_operation(self, job_id: str, owner: ProcessIdentity) -> None:
+        with self._db(write=True) as db:
+            row = self._job(db, job_id)
+            if row["process"] is not None or Job.model_validate_json(row["document"]).state != State.QUEUED:
+                raise fail("refused_by_policy", "job_start")
+            db.execute("UPDATE jobs SET process=?,supervisor=? WHERE id=?",
+                       (owner.model_dump_json(), owner.model_dump_json(), job_id))
+            self._event(db, job_id, "operation_started", {"pid": owner.pid, "start_ticks": owner.start_ticks})
+
     def process(self, job_id: str) -> tuple[ProcessIdentity | None, ProcessIdentity | None]:
         with self._db() as db:
             row = self._job(db, job_id)
             return tuple(ProcessIdentity.model_validate_json(row[key]) if row[key] else None for key in ("process", "supervisor"))
+
+    def claim_authorization(self, authorization_id: str, plan_hash: str, job_id: str) -> None:
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", authorization_id) or not re.fullmatch(r"[0-9a-f]{64}", plan_hash):
+            raise fail("invalid_argument", "authorization_claim")
+        key = "authorization:" + authorization_id
+        value = _json({"plan_hash": plan_hash, "job_id": job_id})
+        with self._db(write=True) as db:
+            self._job(db, job_id)
+            row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+            if row is not None and row[0] != value:
+                raise fail("refused_by_policy", "authorization_claim")
+            db.execute("INSERT OR IGNORE INTO meta VALUES (?,?)", (key, value))
 
     def request_cancel(self, job_id: str) -> Job:
         with self._db(write=True) as db:
@@ -234,6 +264,22 @@ class Registry:
             job = Job.model_validate(data)
             db.execute("UPDATE jobs SET document=?,receipt=? WHERE id=?", (job.model_dump_json(), receipt.model_dump_json(), job_id))
             self._event(db, job_id, "finished", receipt.model_dump())
+            for run_id in job.run_ids:
+                row = db.execute("SELECT document FROM runs WHERE id=?", (run_id,)).fetchone()
+                if row is None:
+                    raise fail("not_found", "job_finish")
+                run = Run.model_validate_json(row[0])
+                if run.state in TERMINAL:
+                    continue
+                data = run.model_dump(by_alias=True)
+                data.update(state=state, ended_at=receipt.observed_at, exit=receipt.exit_code,
+                            stop_reason=receipt.stop_reason)
+                for clock in ("queue_seconds", "held_seconds"):
+                    if getattr(receipt, clock) is not None:
+                        data["gate"][clock] = getattr(receipt, clock)
+                completed_run = Run.model_validate(data)
+                db.execute("UPDATE runs SET document=? WHERE id=?",
+                           (completed_run.model_dump_json(by_alias=True), run_id))
             return job
 
     def receipt(self, job_id: str) -> Receipt | None:

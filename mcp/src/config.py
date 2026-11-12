@@ -23,6 +23,12 @@ class Config:
     gpu_gate: Path | None = None
     intel_gate: Path | None = None
     build_gate: Path | None = None
+    idle_gate: Path | None = None
+    panels_script: Path | None = None
+    journal_reader: Path | None = None
+    session_catalogue: Path | None = None
+    checks_catalogue: Path | None = None
+    knowledge: object | None = None
     checkout: Path | None = None
     dependency_python: Path = Path(sys.executable)
     read_roots: tuple[Path, ...] = ()
@@ -51,6 +57,8 @@ class Config:
         protected = (home / ".config", home / ".ssh", home / "Downloads", *roots("PROTECTED_ROOTS"))
         return cls(state_root=state, harness_dir=path("HARNESS_DIR"),
             gpu_gate=path("GPU_GATE"), intel_gate=path("INTEL_GATE"), build_gate=path("BUILD_GATE"),
+            idle_gate=path("IDLE_GATE"), panels_script=path("PANELS_SCRIPT"), journal_reader=path("JOURNAL_READER"),
+            session_catalogue=path("SESSION_CATALOGUE"), checks_catalogue=path("CHECKS_CATALOGUE"),
             checkout=path("CHECKOUT"), dependency_python=path("DEPENDENCY_PYTHON") or Path(sys.executable),
             read_roots=roots("READ_ROOTS"), write_roots=roots("WRITE_ROOTS"),
             protected_roots=protected, profile=e.get(PREFIX + "PROFILE", "observe"),

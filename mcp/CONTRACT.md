@@ -16,17 +16,36 @@ lifespan starts; `close()` cancels and reaps this server's workers, then closes 
 | `policy` | `snapshot()` reads current operator policy. `authorize(lane=, resource_class=, wall_seconds=, plan_hash=, authorization=None, stage="plan" or "admission")` rereads it each time. Call both stages. No client Boolean is authorization. |
 | `paths` | `PathGuards.read(path)` checks registered roots, canonical containment and protected roots. `output(path)` also refuses existing output. `reserve_file(path)` atomically creates a new file and returns its fd, rejecting symlink directory components. Close that fd. |
 | `registry` | SQLite WAL `Registry`, short transactions, full synchronization, five-second busy deadline. `create_job`, `get_job`, `list_jobs`, `update_job`, `append_event`, `events`, `finish`, `receipt`; `create_run`, `get_run`, `update_run`; `add_artifact`, `get_artifact`, `artifact_path`. |
-| `supervisor` | Linux `Supervisor`: `await start(job_id, argv, cwd=, wall_seconds=, queue_timeout_seconds=3600, grace_seconds=2, queued=False)` starts only trusted CPU work, in its own process group. `mark_admitted(job_id)` separates queue and held clocks. `await cancel(job_id)` never selects by process name. `reconcile(job_id)` imports a durable guardian receipt after disconnect/restart. |
+| `supervisor` | Linux `Supervisor`: `await start(job_id, argv, cwd=, wall_seconds=, queue_timeout_seconds=3600, grace_seconds=2, queued=False, cancellation="group", trusted_read_environment=False)` starts a trusted worker. `mark_admitted(job_id)` separates queue/held clocks. `await cancel(job_id)` never selects by name. `reconcile(job_id)` imports a durable guardian receipt after disconnect/restart. Ordered adapter mode is described below. |
 | `error` | `raise deps.error(code, operation)` returns the one `WorkbenchError`, a framework `ToolError`. It carries only fixed operator guidance, never backend exception text. |
 | `tool(mcp, name)` | Decorator using the group's declared safety spec, registering only selected tools. Unselected decorators leave the function unregistered. |
 | `selected`, `specs` | Actual selected names and the complete validated `ToolSpec` map. Use these when adding resources. |
-| `gates` | Optional injected observation backend for status tools. Implement `snapshot(device=None, request_pid=None)` without running any gate or creating files. |
+| `gates` | Injected passive observation backend. `snapshot(device=None, request_pid=None, cursor=0, limit=50)` returns typed timestamped queue state without acquiring locks or creating files. |
+| `add_cleanup(fn)` | Register a bounded async cleanup callback. Lifespan invokes callbacks in reverse order after stopping owned workers. |
 
 `Config` includes `state_root`, `harness_dir`, `gpu_gate`, `intel_gate`, `build_gate`, `checkout`, `dependency_python`,
 `read_roots`, `write_roots`, `protected_roots`, `profile` and `extra_tools`. All host paths are absolute and operator-set;
 the default registry is outside repositories under XDG state. The state directory and trusted registered roots must not
 be writable by untrusted principals. Path checks and redirected HOME are not an OS sandbox. Never execute unreviewed
 code or use a path-only check as protection against a hostile same-user process.
+
+Domain integrations may configure `session_catalogue`, `checks_catalogue`, `idle_gate`, `panels_script`,
+`journal_reader`, and `knowledge`; these are optional operator-owned backends, not caller parameters. CPU build/idle
+policy uses `max_cpu_seconds` (up to 86,400); GPU/Intel uses `max_hold_seconds` (up to 480).
+
+`await supervisor.start_operation(job_id, operation, cancel=None)` owns an async operation and scoped cancel hook.
+Both callables take no arguments. The operation or its cancel hook must store the final receipt with `registry.finish`.
+Returning without a terminal receipt is `uncertain_outcome`, not success. Cancellation invokes the hook once with a
+30-second cleanup deadline before cancelling the operation task. Do not use this for an unsupervised child process.
+
+`registry.claim_authorization(authorization_id, plan_hash, job_id)` reserves one named hold for exactly one job.
+Claim before launch, then still recheck `policy.authorize(..., stage="admission")` inside admission. A repeated claim
+for the same job/plan is idempotent; a different job cannot consume the same authorization. `registry.finish` also
+finishes linked nonterminal Run records transactionally, preserving their build provenance and terminal evidence.
+
+For queue position, append a `gate_request` event with `{pid, device, request_id}` after the real gate process is
+identified. `registry.latest_event(job_id, "gate_request")` lets `queue_status` map that owned request without accepting
+an arbitrary PID from a client. Kernel and file observations still determine whether the ticket is live.
 
 ## Records
 
@@ -151,10 +170,16 @@ normal child exit or server death. It escalates after a bounded grace period usi
 file is written once and fsynced. A missing receipt is an uncertain outcome, never success. Server shutdown closes only
 workers this instance started; another server using the same registry may request cancellation by exact stored identity.
 
-**Do not run a game through this generic CPU helper yet.** A game adapter must stop owned inputs/game before its gate
-holder releases, observe actual death, and disclose that save draining is unsupported unless an upstream contract proves
-it. Forceful group cancellation is not a save-safe stop. Persistent player saves, raw bridge commands and gate-file
-unlinking are out of scope. The registration exposes no raw Supervisor argv interface.
+**Never run a game through the generic `cancellation="group"` mode.** A trusted `cancellation="adapter"` worker owns
+the entire gate subtree and must handle TERM by stopping owned inputs/game, observing game death, then ending its gate.
+The guardian initially signals only that direct adapter. On grace expiry it kills observed live descendant leaves,
+observes their death, then their parents; it does not release a gate first. The adapter rereads admission policy before
+starting work. Save draining remains unsupported unless an upstream contract proves it. Only disposable sessions may
+be forcibly stopped. Persistent player saves, raw bridge commands and gate-file unlinking are out of scope.
+
+`trusted_read_environment=True` is only for reviewed GET-only provider adapters: it retains existing HOME,
+XDG_CONFIG_HOME and GH_CONFIG_DIR for the provider CLI, never token variables. It is not a tool parameter and must not
+be used for foreign checkout code. The registration exposes no raw Supervisor argv or environment interface.
 
 Raise only the fixed envelope `{code, operation, retryable, retry_after_seconds, operator_action}`. Codes are
 `not_found`, `invalid_argument`, `refused_by_policy`, `unavailable`, `busy`, `timeout`, `uncertain_outcome`, `backend_failed`.

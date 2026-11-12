@@ -7,3 +7,4 @@ NOTES.md
 LOCAL-NOTES.md
 pr-check-forbidden.txt
 .private/
+.uv-cache/

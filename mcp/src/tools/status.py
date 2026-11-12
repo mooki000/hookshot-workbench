@@ -1,13 +1,15 @@
 """Registry observation without launching or probing optional backends."""
 import asyncio
 from importlib.metadata import version
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import Field
 from src.models import JobPage, JobView, WaitResult, TERMINAL, utc_now
+from src.models.gates import QueueSnapshot
 from src.policy import Safety, ToolSpec
 
 SPECS = (
     ToolSpec("workbench_status", Safety.READ, "Read configured capabilities, current policy and bounded active jobs; no connectivity probe."),
+    ToolSpec("queue_status", Safety.READ, "Observe GPU, Intel and build locks and tickets without acquiring a lock or creating files; wait estimates stay unknown."),
     ToolSpec("jobs_list", Safety.READ, "List this registry's jobs with a bounded cursor page."),
     ToolSpec("job_read", Safety.READ, "Read one owned job, bounded events and its final child receipt."),
     ToolSpec("job_wait", Safety.READ, "Wait for observed terminal state under a deadline; cancelling this wait never cancels work."),
@@ -25,6 +27,7 @@ def status(deps) -> dict:
         present = path is not None and (path.is_dir() if kind == "directory" else path.is_file())
         return {"status": "configured" if present else "unavailable",
                 "reason": None if present else "not_configured_or_missing", "connectivity": None}
+    gate_summary = deps.gates.snapshot()
     return {"observed_at": utc_now(), "policy": deps.policy.snapshot().model_dump(),
             "capabilities": {name: available(path, kind) for name, path, kind in (
                 ("harness", config.harness_dir, "directory"), ("trusted_checkout", config.checkout, "directory"),
@@ -32,7 +35,9 @@ def status(deps) -> dict:
                 ("build_gate", config.build_gate, "file"), ("dependency_python", config.dependency_python, "file"))},
             "active_jobs": deps.registry.list_jobs(active_only=True).model_dump(),
             "protected_player_active": None,
-            "tool_revisions": {"server": version("hookshot-workbench-mcp"), "fastmcp": version("fastmcp")},
+            "gate_summary": gate_summary.model_dump(),
+            "tool_revisions": {"server": version("hookshot-workbench-mcp"), "fastmcp": version("fastmcp"),
+                               **{q.device + "_gate": q.source_sha256 for q in gate_summary.devices}},
             "tools": deps.tool_catalogue()}
 
 
@@ -52,6 +57,16 @@ def register(mcp, deps):
     @deps.tool(mcp, "workbench_status")
     async def workbench_status() -> dict:
         return status(deps)
+
+    @deps.tool(mcp, "queue_status")
+    async def queue_status(device: Literal["gpu", "intel", "build"] | None = None,
+                           job_id: JobId | None = None, cursor: Cursor = 0, limit: Limit = 50) -> QueueSnapshot:
+        request_pid = None
+        if job_id is not None:
+            event = deps.registry.latest_event(job_id, "gate_request")
+            if event is not None:
+                request_pid = event.data.get("pid")
+        return deps.gates.snapshot(device=device, request_pid=request_pid, cursor=cursor, limit=limit)
 
     @deps.tool(mcp, "jobs_list")
     async def jobs_list(cursor: Cursor = 0, limit: Limit = 25, active_only: bool = False) -> JobPage:

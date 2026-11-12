@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from src.config import Config
 from src.errors import fail
+from src.effects.gates import GateReader
 from src.policy import PathGuards, Policy, ToolSpec, validate_state_root
 from src.registry import Registry
 from src.registry.supervisor import Supervisor
@@ -20,17 +21,35 @@ class Deps:
         self.paths = PathGuards(self.config)
         self.registry = Registry(self.config.state_root)
         self.supervisor = Supervisor(self.registry)
+        if self.gates is None:
+            self.gates = GateReader(self.config)
+        self._cleanups = []
 
     error = staticmethod(fail)
 
     async def open(self):
         self.registry.open()
+        cursor = 0
+        while True:
+            page = self.registry.list_jobs(cursor=cursor, limit=100, active_only=True)
+            for job in page.jobs:
+                self.supervisor.reconcile(job.job_id)
+            if page.next_cursor is None:
+                break
+            cursor = page.next_cursor
+
+    def add_cleanup(self, cleanup):
+        self._cleanups.append(cleanup)
 
     async def close(self):
         try:
             await self.supervisor.close()
         finally:
-            self.registry.close()
+            try:
+                for cleanup in reversed(self._cleanups):
+                    await cleanup()
+            finally:
+                self.registry.close()
 
     def tool(self, mcp, name: str):
         spec = self.specs[name]

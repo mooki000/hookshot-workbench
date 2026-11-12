@@ -27,10 +27,12 @@ def main():
         raise RuntimeError("guardian_setup_failed")
     if os.getppid() != parent:
         stopping = True
+        reason = "cancelled"
     resource.setrlimit(resource.RLIMIT_CORE, (1, 1))
     root = Path(spec["job_dir"])
+    (root / "ready").touch(exist_ok=False)
     child = None if stopping else subprocess.Popen(spec["argv"], cwd=spec["cwd"], stdin=subprocess.DEVNULL)
-    began = time.monotonic()
+    began = spec["queued_monotonic"]
     stop_at = None
     sent = False
     admitted = None
@@ -49,9 +51,13 @@ def main():
             stopping = True
         if stopping and not sent:
             stop_at = now
-            # The leader catches TERM and retains group ownership through cleanup.
+            # Retain the guardian while an adapter stops its game before its gate.
             old_reason = reason
-            os.killpg(os.getpgrp(), signal.SIGTERM)
+            if spec["cancellation"] == "adapter":
+                if child is not None and code is None:
+                    child.terminate()
+            else:
+                os.killpg(os.getpgrp(), signal.SIGTERM)
             reason = old_reason
             sent = True
         if stopping and now - stop_at >= spec["grace_seconds"]:
@@ -72,6 +78,19 @@ def main():
                 before = len(owned)
                 owned.update(pid for pid, (ppid, _) in rows.items() if ppid in owned)
                 changed = len(owned) != before
+            if spec["cancellation"] == "adapter":
+                # Kill only live leaves in each observation; parents keep gate FDs
+                # until their descendants have died. Zombies are already dead.
+                parents_with_live_children = set()
+                for pid in owned - {os.getpid()}:
+                    try:
+                        text = Path(f"/proc/{pid}/stat").read_text()
+                        state = text[text.rindex(")") + 2:].split()[0]
+                        if state not in {"Z", "X"}:
+                            parents_with_live_children.add(rows[pid][0])
+                    except (OSError, ValueError, IndexError):
+                        pass
+                owned -= parents_with_live_children
             for pid in owned - {os.getpid()}:
                 try:
                     fd = os.pidfd_open(pid)

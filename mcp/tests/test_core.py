@@ -17,7 +17,7 @@ async def test_catalogue(config, profile, extra, cancel):
     server = build_server(replace(config, profile=profile, extra_tools=extra))
     async with Client(server) as client:
         tools = {tool.name: tool for tool in await client.list_tools()}
-        assert set(tools) == {"workbench_status", "jobs_list", "job_read", "job_wait"} | ({"job_cancel"} if cancel else set())
+        assert set(tools) == {"workbench_status", "queue_status", "jobs_list", "job_read", "job_wait"} | ({"job_cancel"} if cancel else set())
         assert not DENIED_TOOLS.intersection(tools)
         for name, tool in tools.items():
             assert tool.annotations.read_only_hint == (name != "job_cancel")
