@@ -13,13 +13,13 @@ from src.effects.evidence_jobs import submit_evidence_job
 from src.effects.evidence_logs import run_faults_impl, run_logs_impl
 
 SPECS = (
-    ToolSpec("run_logs", Safety.READ, "Read bounded whole retained log lines by cursor or last N; filters are approved signatures, not regexes."),
-    ToolSpec("run_faults", Safety.READ, "Classify retained fatal/device/driver lines; unavailable journal coverage stays unknown, known refusals stay separate."),
-    ToolSpec("evidence_analyze", Safety.RUN, "Start an idle-gated approved analyzer: present_frame_times, readback_waits, thread_cpu or memory_lines. Returns a Job; invalid evidence produces rejected metrics, never invented zeroes."),
-    ToolSpec("evidence_scan_frames", Safety.RUN, "Start an idle-gated retained pixel-capture scan. Only consecutive triplets are tested; visual review remains required."),
-    ToolSpec("evidence_panels", Safety.WRITE_LOCAL, "Start an owned idle-gated labelled panel Job in new output. Source hashes are retained and inspection remains pending."),
-    ToolSpec("evidence_compare", Safety.READ, "Compare exactly two explicit existing run pairs with shared quiet/repeat/paired rules; reject unlike clocks, settings and instrument sources."),
-    ToolSpec("evidence_bundle", Safety.WRITE_LOCAL, "Assemble private manifest/table/draft artifacts from registered evidence. No typed metric numbers, upload, post or public approval.", idempotent=False),
+    ToolSpec("run_logs", Safety.READ, "Read bounded whole retained log lines by cursor or last N; filters are approved signatures, not regexes.", shell_route="Bounded retained-log tail and approved signature filtering"),
+    ToolSpec("run_faults", Safety.READ, "Classify retained fatal/device/driver lines; unavailable journal coverage stays unknown, known refusals stay separate.", shell_route="Manual game/kernel fault classification with coverage accounting"),
+    ToolSpec("evidence_analyze", Safety.RUN, "Start an idle-gated approved analyzer: present_frame_times, readback_waits, thread_cpu or memory_lines. Returns a Job; invalid evidence produces rejected metrics, never invented zeroes.", shell_route="Idle-gated retained frame/readback/thread/memory analysis"),
+    ToolSpec("evidence_scan_frames", Safety.RUN, "Start an idle-gated retained pixel-capture scan. Only consecutive triplets are tested; visual review remains required.", shell_route="Retained framelog inspection and existing detector invocation"),
+    ToolSpec("evidence_panels", Safety.WRITE_LOCAL, "Start an owned idle-gated labelled panel Job in new output. Source hashes are retained and inspection remains pending.", shell_route="Source-preserving panels helper and image provenance bookkeeping"),
+    ToolSpec("evidence_compare", Safety.READ, "Compare exactly two explicit existing run pairs with shared quiet/repeat/paired rules; reject unlike clocks, settings and instrument sources.", shell_route="Existing nightly/regression paired comparison rules"),
+    ToolSpec("evidence_bundle", Safety.WRITE_LOCAL, "Assemble private manifest/table/draft artifacts from registered evidence. No typed metric numbers, upload, post or public approval.", idempotent=False, shell_route="Hand-assembled evidence tables and private handoff drafts"),
 )
 Wall = Annotated[int, Field(ge=1, le=480)]
 

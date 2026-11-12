@@ -13,14 +13,14 @@ from src.effects.knowledge_nightly import nightly_status_impl
 from src.effects.knowledge_documents import knowledge_search_impl
 
 SPECS = (
-    ToolSpec("github_thread_read", Safety.READ, "Read bounded, untrusted issue/PR text with full pagination status, head and snapshot hash; GET only.", open_world=True),
-    ToolSpec("github_watch", Safety.WRITE_LOCAL, "Watch allowlisted threads until a deadline as an owned Job; persist private cursors, never post.", open_world=True),
-    ToolSpec("prloop_refresh", Safety.WRITE_LOCAL, "Scan an initialized loop snapshot as an owned Job under its coordinator lock; never claim or attest review.", open_world=True),
-    ToolSpec("prloop_next", Safety.READ, "Read the installed loop's next action on existing state; never initialize configuration or execute the proposed action."),
-    ToolSpec("test_requests_read", Safety.READ, "Read approved request-room cards only through an attested GET-only/no-save trusted CLI; stock unsafe first reads refuse.", open_world=True),
-    ToolSpec("team_read", Safety.READ, "Read an allowlisted existing room through the trusted GET-only/no-save CLI; no joining, sign-in or settings access.", open_world=True),
-    ToolSpec("nightly_status", Safety.READ, "Observe retained nightly state and read-only SQLite; never run rolling --check or construct its store."),
-    ToolSpec("knowledge_search", Safety.READ, "Search titles, headings and first lines of explicitly registered skills/reports; bounded revision-bound cursors."),
+    ToolSpec("github_thread_read", Safety.READ, "Read bounded, untrusted issue/PR text with full pagination status, head and snapshot hash; GET only.", open_world=True, shell_route="Paginated gh issue/PR/comment/review GET reads"),
+    ToolSpec("github_watch", Safety.WRITE_LOCAL, "Watch allowlisted threads until a deadline as an owned Job; persist private cursors, never post.", open_world=True, shell_route="Bounded thread watcher with retained snapshot cursors"),
+    ToolSpec("prloop_refresh", Safety.WRITE_LOCAL, "Scan an initialized loop snapshot as an owned Job under its coordinator lock; never claim or attest review.", open_world=True, shell_route="One initialized PR-loop scan under its coordinator lock"),
+    ToolSpec("prloop_next", Safety.READ, "Read the installed loop's next action on existing state; never initialize configuration or execute the proposed action.", shell_route="Pure PR-loop next-action inspection without CLI initialization"),
+    ToolSpec("test_requests_read", Safety.READ, "Read approved request-room cards only through an attested GET-only/no-save trusted CLI; stock unsafe first reads refuse.", open_world=True, shell_route="Attested GET-only request list/show; unsafe stock CLI stays unavailable"),
+    ToolSpec("team_read", Safety.READ, "Read an allowlisted existing room through the trusted GET-only/no-save CLI; no joining, sign-in or settings access.", open_world=True, shell_route="Attested GET-only existing-room read; unsafe stock CLI stays unavailable"),
+    ToolSpec("nightly_status", Safety.READ, "Observe retained nightly state and read-only SQLite; never run rolling --check or construct its store.", shell_route="Retained nightly/rolling files and read-only results database"),
+    ToolSpec("knowledge_search", Safety.READ, "Search titles, headings and first lines of explicitly registered skills/reports; bounded revision-bound cursors.", shell_route="Selected skill/report heading search and revision lookup"),
 )
 
 Limit = Annotated[int, Field(ge=1, le=100)]

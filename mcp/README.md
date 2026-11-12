@@ -61,6 +61,49 @@ Stdio inherits the trust of the account and host launching it. This entry opens 
 as an unauthenticated remote service. Missing optional backends are reported as `unavailable`, not silently emulated.
 `configured` means a path exists, not that connectivity, a binary, a save, or gameplay has been validated.
 
+## Shell entry and owned sessions
+
+No configured MCP client is needed for the CLI. From the repository root:
+
+```sh
+uv run --project mcp hookshot-wb list --json
+uv run --project mcp hookshot-wb list --profile operate
+uv run --project mcp hookshot-wb call workbench_status --args '{}'
+uv run --project mcp hookshot-wb read workbench://policy
+uv run --project mcp hookshot-wb prompt recover_or_cancel --args '{"job_or_run_id":"an-owned-id"}'
+uv run --project mcp hookshot-wb broker status
+uv run --project mcp hookshot-wb broker stop --timeout 90
+```
+
+Tool calls go through the real server in memory, with the same profiles, schema validation and error envelopes.
+Structured results are JSON on stdout; coded errors are JSON on stderr with a nonzero exit. On the first broker-owned
+call, stderr also says `hookshot-wb: broker started` once. A returned Job is returned immediately, not awaited to
+completion: in particular, a launch Job describes the session's lifetime. Use `job_read` events for `bridge_ready`,
+and observed `session_state` before further actions. `job_wait` timing out is a normal result with `timed_out: true`;
+an outer CLI `--timeout` is a separate bounded transport wait. Never replay an uncertain mutation.
+
+The generated [CATALOGUE.md](CATALOGUE.md) names each shell replacement and whether the CLI needs the broker.
+Simple readers, catalogue, queues and retained comparisons are one-shot; they start no daemon. Live-session reads and
+all local mutations/owned jobs share one persistent broker per state root. The broker's real server owns sessions;
+each CLI request still enforces the selected observe/operate profile, including explicit extra-tool opt-ins.
+
+The broker uses only a Unix socket inside `STATE_ROOT/cli` (0700); socket, owner record and lock are 0600.
+Every connection checks Linux peer credentials. The held lock and pid/start-time/boot identity prevent duplicate
+brokers and PID-reuse confusion. There is no TCP listener or raw-command endpoint. An orphaned session is listed by
+`broker status`; a later broker never adopts or kills stored PIDs. Parent-death guardians still clean their owned work.
+Unsent startup failures can be reconciled, but a sent request with a lost reply is never automatically retried.
+
+Idle shutdown defaults to 60 seconds and does not stop live owned sessions/jobs. Explicit stop, signal or a configured
+foreground lifetime closes sessions in game-before-gate order and records `broker_stop`, `broker_signal` or
+`broker_deadline` as the Run reason. Start foreground service management with
+`uv run --project mcp hookshot-wb serve`; optional `--idle-seconds` and `--lifetime-seconds` bound that service.
+Changing backend configuration requires stopping the existing broker after its jobs are reconciled, then starting a
+new one. IPC requests cap at 256 KiB and responses at 8 MiB.
+
+For MCP clients, [the project example](../.mcp.json.example) provides both stdio profiles. Choose the appropriate entry;
+`operate` already includes reads. Separate stdio servers do not adopt each other's live session connections.
+No installer writes this example into a home or configuration directory.
+
 ## Configuration
 
 All package variables use `HOOKSHOT_WB_`. Paths must be absolute (a leading `~` expands to the account's home).
@@ -82,6 +125,7 @@ trusted tools and registered roots. Optional values default to unset.
 | `HOOKSHOT_WB_PROTECTED_ROOTS` | `[]`, added to always-protected `~/.config`, `~/.ssh`, `~/Downloads`. Add every player game/save folder; protection wins over registered roots. |
 | `HOOKSHOT_WB_PROFILE` | `observe`. `operate` opts into RUN and WRITE_LOCAL tools as well. Unknown values fail startup. |
 | `HOOKSHOT_WB_EXTRA_TOOLS` | Empty. Comma-separated exact tool names to add to the selected profile. Unknown or forbidden names fail startup. |
+| `HOOKSHOT_WB_BROKER_IDLE_SECONDS` | `60`; between 0.05 and 3,600 seconds. Idle CLI broker shutdown only when it owns no live work. |
 | `HOOKSHOT_WB_SESSION_CATALOGUE` | Unset. Operator-owned local session/build/save/profile catalogue. |
 | `HOOKSHOT_WB_CHECKS_CATALOGUE` | Unset. Operator-owned reviewed checkouts, check/build profiles and CI repository allowlist. |
 | `HOOKSHOT_WB_KNOWLEDGE_CONFIG` | Unset. Operator-owned knowledge/read-adapter configuration. |
@@ -146,47 +190,47 @@ uv run python -m src.generate_readme --check
 
 ### Tools
 
-| Tool | Group | Safety | Profiles | Required arguments | Purpose |
-|---|---|---|---|---|---|
-| `build_plan` | checks | WRITE_LOCAL | operate | repo_id, commit, profile_id | Retain a conservative pinned build plan and dry-run evidence; never build or request a gate. |
-| `build_start` | checks | RUN | operate | plan_id, idempotency_key | Start an operator-approved build plan as an owned gated Job; never prepare shaders, accept SDK terms or upgrade dependencies. |
-| `checks_pr` | checks | WRITE_LOCAL | operate | repo_id, commit, branch, title_artifact, idempotency_key | Run the configured repository-bound pre-push check, including its fetch; never push or publish. |
-| `checks_source` | checks | RUN | operate | repo_id, commit, idempotency_key | Run the reviewed game-free suite or exact declared test names; optionally compare only failures with a reviewed base commit. |
-| `checks_windows_syntax` | checks | RUN | operate | repo_id, commit, base, idempotency_key | Run the existing Windows-target fixture check; Windows runtime is always not_run. |
-| `ci_read` | checks | READ | observe, operate | repository | Read allowlisted PR or run checks and failing test names; compare with completed main runs without rerunning or modifying CI. |
-| `evidence_analyze` | evidence | RUN | operate | run_id, analyzer_id, arguments, idempotency_key | Start an idle-gated approved analyzer: present_frame_times, readback_waits, thread_cpu or memory_lines. Returns a Job; invalid evidence produces rejected metrics, never invented zeroes. |
-| `evidence_bundle` | evidence | WRITE_LOCAL | operate | request | Assemble private manifest/table/draft artifacts from registered evidence. No typed metric numbers, upload, post or public approval. |
-| `evidence_compare` | evidence | READ | observe, operate | pairing | Compare exactly two explicit existing run pairs with shared quiet/repeat/paired rules; reject unlike clocks, settings and instrument sources. |
-| `evidence_panels` | evidence | WRITE_LOCAL | operate | images, label, idempotency_key | Start an owned idle-gated labelled panel Job in new output. Source hashes are retained and inspection remains pending. |
-| `evidence_scan_frames` | evidence | RUN | operate | capture_artifact_id, idempotency_key | Start an idle-gated retained pixel-capture scan. Only consecutive triplets are tested; visual review remains required. |
-| `github_thread_read` | knowledge | READ | observe, operate | repository, number | Read bounded, untrusted issue/PR text with full pagination status, head and snapshot hash; GET only. |
-| `github_watch` | knowledge | WRITE_LOCAL | operate | threads, timeout_seconds, idempotency_key | Watch allowlisted threads until a deadline as an owned Job; persist private cursors, never post. |
-| `job_cancel` | status | WRITE_LOCAL | operate | job_id | Request cancellation of one registry-owned worker; preserve its output and receipt. |
-| `job_read` | status | READ | observe, operate | job_id | Read one owned job, bounded events and its final child receipt. |
-| `job_wait` | status | READ | observe, operate | job_id | Wait for observed terminal state under a deadline; cancelling this wait never cancels work. |
-| `jobs_list` | status | READ | observe, operate | none | List this registry's jobs with a bounded cursor page. |
-| `knowledge_search` | knowledge | READ | observe, operate | query | Search titles, headings and first lines of explicitly registered skills/reports; bounded revision-bound cursors. |
-| `nightly_status` | knowledge | READ | observe, operate | none | Observe retained nightly state and read-only SQLite; never run rolling --check or construct its store. |
-| `prloop_next` | knowledge | READ | observe, operate | none | Read the installed loop's next action on existing state; never initialize configuration or execute the proposed action. |
-| `prloop_refresh` | knowledge | WRITE_LOCAL | operate | snapshot_id, idempotency_key | Scan an initialized loop snapshot as an owned Job under its coordinator lock; never claim or attest review. |
-| `queue_status` | status | READ | observe, operate | none | Observe GPU, Intel and build locks and tickets without acquiring a lock or creating files; wait estimates stay unknown. |
-| `run_faults` | evidence | READ | observe, operate | run_id | Classify retained fatal/device/driver lines; unavailable journal coverage stays unknown, known refusals stay separate. |
-| `run_logs` | evidence | READ | observe, operate | run_id | Read bounded whole retained log lines by cursor or last N; filters are approved signatures, not regexes. |
-| `save_clone` | session | WRITE_LOCAL | operate | save_id, idempotency_key | Copy a registered save into a new owned directory with a private hash manifest. Never overwrite or modify a library. |
-| `session_age` | session | WRITE_LOCAL | operate | run_id, age, idempotency_key | Submit one age change on a disposable debug profile; unavailable commands never fall back to cheats. |
-| `session_input` | session | WRITE_LOCAL | operate | run_id, steps, units, idempotency_key | Submit owned typed input. Frames are game presents; hos at is seconds and duration milliseconds, rounded half away from zero at 60 frames/s. Completion is effect_unverified. |
-| `session_launch` | session | RUN | operate | build_id, profile_id, wall_seconds, idempotency_key | Submit a bounded disposable windowless session through the configured wrapper and gate. Returns a Job; no direct launch. |
-| `session_options_get` | session | READ | observe, operate | run_id | Read bounded canonical settings with a cursor. |
-| `session_options_set` | session | WRITE_LOCAL | operate | run_id, values | Set owned-run canonical options, returning before/after. Device, window, microphone and resource-class changes refuse. |
-| `session_saves_list` | session | READ | observe, operate | run_id | Read bounded owned-session save metadata, not contents; consistency during writes is not guaranteed. |
-| `session_shot` | session | WRITE_LOCAL | operate | run_id | Capture to a new server-chosen run path; return artifact metadata, not image bytes. No overlay. |
-| `session_state` | session | READ | observe, operate | run_id | Read bounded state with sample age and capability. Missing sampled-frame freshness remains unknown. |
-| `session_stop` | session | WRITE_LOCAL | operate | run_id, reason, idempotency_key | Submit owned disposable-session stop; observe game exit before gate release. Save draining is unsupported. |
-| `session_teleport` | session | WRITE_LOCAL | operate | run_id, destination_id, idempotency_key | Submit one debug travel to a bridge-listed destination on a disposable debug profile. No replay on uncertain acceptance. |
-| `session_wait` | session | READ | observe, operate | run_id, predicate, idempotency_key | Submit a bounded observed predicate wait as a Job. Cancelling it never stops the game or resends input. |
-| `team_read` | knowledge | READ | observe, operate | room | Read an allowlisted existing room through the trusted GET-only/no-save CLI; no joining, sign-in or settings access. |
-| `test_requests_read` | knowledge | READ | observe, operate | none | Read approved request-room cards only through an attested GET-only/no-save trusted CLI; stock unsafe first reads refuse. |
-| `workbench_status` | status | READ | observe, operate | none | Read configured capabilities, current policy and bounded active jobs; no connectivity probe. |
+| Tool | Group | Safety | Profiles | CLI broker | Required arguments | Replaces |
+|---|---|---|---|---|---|---|
+| `build_plan` | checks | WRITE_LOCAL | operate | yes | repo_id, commit, profile_id | Pinned build/donor planning and compiler dry-run inspection |
+| `build_start` | checks | RUN | operate | yes | plan_id, idempotency_key | Gated full/reused build wrappers and completion bookkeeping |
+| `checks_pr` | checks | WRITE_LOCAL | operate | yes | repo_id, commit, branch, title_artifact, idempotency_key | Repository-bound pre-push check; whole imported-commit attestations only |
+| `checks_source` | checks | RUN | operate | yes | repo_id, commit, idempotency_key | Idle-gated source test runner and failing-name comparison |
+| `checks_windows_syntax` | checks | RUN | operate | yes | repo_id, commit, base, idempotency_key | Windows-target fixture check wrapper (not Windows runtime) |
+| `ci_read` | checks | READ | observe, operate | no | repository | CI reader plus failed-job/log and matching-main inspection |
+| `evidence_analyze` | evidence | RUN | operate | yes | run_id, analyzer_id, arguments, idempotency_key | Idle-gated retained frame/readback/thread/memory analysis |
+| `evidence_bundle` | evidence | WRITE_LOCAL | operate | yes | request | Hand-assembled evidence tables and private handoff drafts |
+| `evidence_compare` | evidence | READ | observe, operate | no | pairing | Existing nightly/regression paired comparison rules |
+| `evidence_panels` | evidence | WRITE_LOCAL | operate | yes | images, label, idempotency_key | Source-preserving panels helper and image provenance bookkeeping |
+| `evidence_scan_frames` | evidence | RUN | operate | yes | capture_artifact_id, idempotency_key | Retained framelog inspection and existing detector invocation |
+| `github_thread_read` | knowledge | READ | observe, operate | no | repository, number | Paginated gh issue/PR/comment/review GET reads |
+| `github_watch` | knowledge | WRITE_LOCAL | operate | yes | threads, timeout_seconds, idempotency_key | Bounded thread watcher with retained snapshot cursors |
+| `job_cancel` | status | WRITE_LOCAL | operate | yes | job_id | Hand-managed scoped cancellation and child receipts |
+| `job_read` | status | READ | observe, operate | no | job_id | Manual progress logs and completion-receipt lookup |
+| `job_wait` | status | READ | observe, operate | no | job_id | Repeated bounded completion checks without cancelling work |
+| `jobs_list` | status | READ | observe, operate | no | none | Ad-hoc background process and topic job lists |
+| `knowledge_search` | knowledge | READ | observe, operate | no | query | Selected skill/report heading search and revision lookup |
+| `nightly_status` | knowledge | READ | observe, operate | no | none | Retained nightly/rolling files and read-only results database |
+| `prloop_next` | knowledge | READ | observe, operate | no | none | Pure PR-loop next-action inspection without CLI initialization |
+| `prloop_refresh` | knowledge | WRITE_LOCAL | operate | yes | snapshot_id, idempotency_key | One initialized PR-loop scan under its coordinator lock |
+| `queue_status` | status | READ | observe, operate | no | none | Manual queue/holder files and procfs lock inspection |
+| `run_faults` | evidence | READ | observe, operate | no | run_id | Manual game/kernel fault classification with coverage accounting |
+| `run_logs` | evidence | READ | observe, operate | no | run_id | Bounded retained-log tail and approved signature filtering |
+| `save_clone` | session | WRITE_LOCAL | operate | yes | save_id, idempotency_key | Fresh disposable copy of a registered seed with hashes |
+| `session_age` | session | WRITE_LOCAL | operate | yes | run_id, age, idempotency_key | Optional typed bridge age command, with no cheat fallback |
+| `session_input` | session | WRITE_LOCAL | operate | yes | run_id, steps, units, idempotency_key | Typed control-client sequence or scoped release commands |
+| `session_launch` | session | RUN | operate | yes | build_id, profile_id, wall_seconds, idempotency_key | Windowless wrapper setup, gate admission and bridge readiness journal |
+| `session_options_get` | session | READ | observe, operate | yes | run_id | Bounded canonical control option_get listing |
+| `session_options_set` | session | WRITE_LOCAL | operate | yes | run_id, values | Scoped control option_set and conditional restoration |
+| `session_saves_list` | session | READ | observe, operate | yes | run_id | Control saves metadata listing, not save-file export |
+| `session_shot` | session | WRITE_LOCAL | operate | yes | run_id | Control screenshot into a fresh registered output |
+| `session_state` | session | READ | observe, operate | yes | run_id | Control status plus sampled-state age and freshness checks |
+| `session_stop` | session | WRITE_LOCAL | operate | yes | run_id, reason, idempotency_key | Owned input/game shutdown before gate release and final receipt |
+| `session_teleport` | session | WRITE_LOCAL | operate | yes | run_id, destination_id, idempotency_key | One listed debug teleport plus observed arrival checks |
+| `session_wait` | session | READ | observe, operate | yes | run_id, predicate, idempotency_key | Observed frame/state/map predicates, not guessed boot sleeps |
+| `team_read` | knowledge | READ | observe, operate | no | room | Attested GET-only existing-room read; unsafe stock CLI stays unavailable |
+| `test_requests_read` | knowledge | READ | observe, operate | no | none | Attested GET-only request list/show; unsafe stock CLI stays unavailable |
+| `workbench_status` | status | READ | observe, operate | no | none | Manual policy, prerequisite, revision and active-job inspection |
 
 ### Resources
 
@@ -219,6 +263,8 @@ uv run python -m src.generate_readme --check
 
 - A driver allocation exception requires a named allocator/status/API source signature. A generic
   `NV_ERR_NO_MEMORY` at another location is unknown and requires stopping; it is not a blanket exemption.
+- Live owned logs have incomplete artifact metadata with unknown size/digest. After exit, a new complete artifact
+  version becomes the Run's current log; prior metadata stays in the registry. A cursor from the old version is stale.
 - Job pages: default 25, maximum 100. Event pages: default 50, maximum 100; `next_cursor` is the last observed
   sequence, not an offset. Events are append-only, at most 16 KiB each. Progress text is at most 2,048 characters.
 - Queue pages: default 50, maximum 100 waiters per lane; queue/yielded entries share a page cursor. At most 10,000

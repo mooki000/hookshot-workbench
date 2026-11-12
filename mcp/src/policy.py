@@ -38,6 +38,12 @@ class ToolSpec:
     destructive: bool = False
     idempotent: bool = True
     open_world: bool = False
+    broker: bool = False
+    shell_route: str = ""
+
+    @property
+    def requires_broker(self) -> bool:
+        return self.safety != Safety.READ or self.broker
 
     @property
     def annotations(self) -> dict[str, bool]:

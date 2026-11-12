@@ -12,7 +12,7 @@ from pathlib import Path
 
 from src.errors import fail
 from src.models import (Artifact, Event, EventPage, Job, JobPage, ProcessIdentity,
-                        Producer, Receipt, Run, State, TERMINAL, utc_now)
+                        Producer, Receipt, Run, RunPage, State, TERMINAL, utc_now)
 
 MAX_PAGE = 100
 MAX_EVENT_BYTES = 16384
@@ -48,12 +48,16 @@ class Registry:
         self.state_root = state_root
         self.path = state_root / "registry.sqlite3"
         self.owner: str | None = None
+        self._readonly = False
 
     @contextmanager
     def _db(self, *, write: bool = False):
         if self.owner is None:
             raise fail("unavailable", "registry")
-        db = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        if write and self._readonly:
+            raise fail("refused_by_policy", "registry")
+        target = self.path.as_uri() + "?mode=ro" if self._readonly else self.path
+        db = sqlite3.connect(target, uri=self._readonly, timeout=5, isolation_level=None)
         db.row_factory = sqlite3.Row
         try:
             db.execute("PRAGMA foreign_keys=ON")
@@ -72,6 +76,7 @@ class Registry:
             db.close()
 
     def open(self) -> None:
+        self._readonly = False
         self.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         # SQLite's journal-mode transition can fail immediately under concurrent
         # first opens despite busy_timeout. Serialize only registry initialization.
@@ -125,6 +130,24 @@ class Registry:
         finally:
             db.close()
         self.path.chmod(0o600)
+
+    def open_readonly(self) -> bool:
+        """Inspect existing state without creating a registry or initialization lock."""
+        if not self.path.exists():
+            return False
+        if self.path.is_symlink():
+            raise fail("refused_by_policy", "registry")
+        db = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            db.execute("PRAGMA query_only=ON")
+            row = db.execute("SELECT value FROM meta WHERE key='owner'").fetchone()
+            if row is None:
+                raise fail("unavailable", "registry")
+            self.owner = row[0]
+            self._readonly = True
+            return True
+        finally:
+            db.close()
 
     def close(self) -> None:
         # Connections are transaction-scoped; no global connection to leak across forks.
@@ -351,6 +374,25 @@ class Registry:
                 raise fail("not_found", "run_read")
             return Run.model_validate_json(row[0])
 
+    def list_runs(self, *, cursor: int = 0, limit: int = 100, active_only: bool = False) -> RunPage:
+        _page(limit, cursor)
+        with self._db() as db:
+            clause = " AND json_extract(document, '$.state') NOT IN ('completed','failed','cancelled','interrupted')" if active_only else ""
+            rows = db.execute("SELECT rowid,document FROM runs WHERE rowid>? AND json_extract(document,'$.owner')=?" +
+                              clause + " ORDER BY rowid LIMIT ?", (cursor, self.owner, limit + 1)).fetchall()
+            selected = rows[:limit]
+            return RunPage(runs=[Run.model_validate_json(row["document"]) for row in selected],
+                next_cursor=selected[-1]["rowid"] if len(rows) > limit else None, observed_at=utc_now())
+
+    def run_process_owner(self, run_id: str) -> ProcessIdentity | None:
+        _valid_id(run_id, "run")
+        with self._db() as db:
+            row = db.execute("SELECT supervisor FROM jobs WHERE owner=? AND process IS NOT NULL "
+                "AND operation IN ('session_process','session_launch') AND EXISTS "
+                "(SELECT 1 FROM json_each(json_extract(document,'$.run_ids')) WHERE value=?) "
+                "ORDER BY seq DESC LIMIT 1", (self.owner, run_id)).fetchone()
+            return ProcessIdentity.model_validate_json(row[0]) if row and row[0] else None
+
     def update_run(self, run_id: str, **changes) -> Run:
         if {"run_id", "attempt_id", "owner"} & changes.keys():
             raise fail("invalid_argument", "run_update")
@@ -368,6 +410,20 @@ class Registry:
             run = Run.model_validate(data)
             db.execute("UPDATE runs SET document=? WHERE id=?", (run.model_dump_json(by_alias=True), run_id))
             return run
+
+    def add_live_artifact(self, path: Path, *, guards, mime: str, producer: Producer,
+                          run_id: str, clock: str | None = None) -> Artifact:
+        """Register an owned growing file without inventing a stable size or digest."""
+        path = guards.read(path)
+        self.get_run(run_id)
+        if not path.is_file():
+            raise fail("refused_by_policy", "artifact_register")
+        ident = new_id("artifact")
+        artifact = Artifact(id=ident, uri="workbench://artifacts/" + ident, mime=mime,
+            producer=producer, run_id=run_id, clock=clock, complete=False)
+        with self._db(write=True) as db:
+            db.execute("INSERT INTO artifacts VALUES (?,?,?)", (ident, artifact.model_dump_json(), str(path)))
+        return artifact
 
     def add_artifact(self, path: Path, *, guards, mime: str, producer: Producer,
                      run_id: str | None = None, clock: str | None = None,

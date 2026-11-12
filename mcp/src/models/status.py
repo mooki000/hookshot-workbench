@@ -16,6 +16,8 @@ class ToolInfo(Record):
     group: str
     safety: str
     annotations: dict[str, bool]
+    requires_broker: bool
+    shell_route: str
 
 
 class WorkbenchStatus(Record):

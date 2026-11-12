@@ -90,6 +90,7 @@ class Session:
     options_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     restore: dict[str, tuple[Option, Option]] = field(default_factory=dict)
     stopping: bool = False
+    stop_reason: str | None = None
 
 
 class SessionService:
@@ -98,9 +99,11 @@ class SessionService:
         self.sessions: dict[str, Session] = {}
         self.tasks: dict[str, asyncio.Task] = {}
         self._closed = False
-        cleanup = getattr(deps, "add_cleanup", None)
-        if cleanup is not None:
-            cleanup(self.close)
+        deps.services["session"] = self
+        deps.add_cleanup(self.close, before_workers=True)
+
+    def active_run_ids(self):
+        return [run_id for run_id in self.sessions if self.deps.registry.get_run(run_id).state not in TERMINAL]
 
     def owned(self, run_id: str, *, active=True) -> Session:
         run = self.deps.registry.get_run(run_id)
@@ -532,7 +535,8 @@ class SessionService:
                 except BaseException:
                     current = deps.registry.get_run(run.run_id)
                     if current.state not in TERMINAL:
-                        deps.registry.update_run(run.run_id, state=State.INTERRUPTED, ended_at=utc_now(), stop_reason="launch_interrupted")
+                        deps.registry.update_run(run.run_id, state=State.CANCELLED if session.stopping else State.INTERRUPTED,
+                            ended_at=utc_now(), stop_reason=session.stop_reason or "launch_interrupted")
                     raise
                 return {"run_id": run.run_id, "save_drain": "unsupported", "timing_valid": False}
 
@@ -567,8 +571,14 @@ class SessionService:
         await deps.supervisor.start(process.job_id, [sys.executable, "-I",
             str(Path(__file__).with_name("session_worker.py")), "--outer", str(planfile)], cwd=Path(session.plan["copy"]),
             wall_seconds=session.plan["hold_seconds"]-20, queued=True, grace_seconds=20, cancellation="adapter")
-        admitted, ready = False, False
+        admitted, ready, live_log = False, False, False
         while deps.registry.get_job(process.job_id).state not in TERMINAL:
+            if not live_log and (root / "hookshot_log.txt").is_file():
+                art = deps.registry.add_live_artifact(root / "hookshot_log.txt", guards=deps.paths,
+                    mime="text/plain", producer=Producer(tool="session_launch"), run_id=session.run_id)
+                current = deps.registry.get_run(session.run_id)
+                deps.registry.update_run(session.run_id, artifacts=[*current.artifacts, art.id])
+                live_log = True
             if not admitted and (root / "admission.json").is_file():
                 admission = read_json(root / "admission.json", 1024)
                 deps.supervisor.mark_admitted(process.job_id)
@@ -607,7 +617,7 @@ class SessionService:
             if end == State.COMPLETED and current.state in {State.QUEUED, State.STARTING}:
                 deps.registry.update_run(session.run_id, state=State.RUNNING)
             deps.registry.update_run(session.run_id, state=end, ended_at=utc_now(), exit=game_exit,
-                stop_reason="stopped" if session.stopping else "game_exit" if game_exit is not None else "missing_game_receipt")
+                stop_reason=(session.stop_reason or "stopped") if session.stopping else "game_exit" if game_exit is not None else "missing_game_receipt")
         if session.bridge:
             await session.bridge.close()
         if not receipt or not receipt.process_exited or game_exit is None:
@@ -617,7 +627,11 @@ class SessionService:
 
     async def _retain(self, session):
         run = self.deps.registry.get_run(session.run_id)
-        artifacts = list(run.artifacts)
+        # Seal a new artifact version after exit; retain the old live metadata in
+        # the registry, but keep only one current named log in the Run manifest.
+        artifacts = [ident for ident in run.artifacts if not (
+            (art := self.deps.registry.get_artifact(ident)).producer.tool == "session_launch" and
+            not art.complete and self.deps.registry.artifact_path(ident, self.deps.paths).name == "hookshot_log.txt")]
         def load_values(filename):
             try:
                 raw = (session.root / filename).read_bytes()
@@ -644,7 +658,8 @@ class SessionService:
         if run.state not in TERMINAL:
             self.deps.registry.update_run(run.run_id, artifacts=artifacts)
 
-    async def _stop(self, session) -> StopResult:
+    async def _stop(self, session, reason=None) -> StopResult:
+        session.stop_reason = session.stop_reason or reason
         session.stopping = True
         job = self.deps.registry.get_job(session.process_job) if session.process_job else None
         if job is None:
@@ -689,12 +704,25 @@ class SessionService:
     async def stop_impl(self, run_id, reason, idempotency_key):
         session = self.owned(run_id, active=False)
         return await self._submit("session_stop", {"run_id": run_id, "reason": reason}, idempotency_key,
-            lambda _: self._stop(session), run_id=run_id)
+            lambda _: self._stop(session, reason), run_id=run_id)
 
     async def close(self):
         self._closed = True
+        launches = {session.launch_job for session in self.sessions.values()}
+        pending = []
+        for job_id in list(self.tasks):
+            if job_id in launches:
+                continue
+            task = self.deps.supervisor.tasks.get(job_id)
+            if task is not None:
+                await self.deps.supervisor.cancel(job_id)
+                pending.append(task)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         for session in list(self.sessions.values()):
+            if self.deps.registry.get_run(session.run_id).state not in TERMINAL:
+                session.stop_reason = session.stop_reason or self.deps.shutdown_reason
             if session.process_job and self.deps.registry.get_job(session.process_job).state not in TERMINAL:
-                await self._stop(session)
+                await self._stop(session, self.deps.shutdown_reason)
             if session.bridge:
                 await session.bridge.close()

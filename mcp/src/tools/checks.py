@@ -9,12 +9,12 @@ from src.effects.checks import build_plan_impl, submit_impl
 from src.effects.checks_ci import ci_read_impl
 
 SPECS = (
-    ToolSpec("build_plan", Safety.WRITE_LOCAL, "Retain a conservative pinned build plan and dry-run evidence; never build or request a gate.", idempotent=False),
-    ToolSpec("build_start", Safety.RUN, "Start an operator-approved build plan as an owned gated Job; never prepare shaders, accept SDK terms or upgrade dependencies."),
-    ToolSpec("checks_source", Safety.RUN, "Run the reviewed game-free suite or exact declared test names; optionally compare only failures with a reviewed base commit."),
-    ToolSpec("checks_windows_syntax", Safety.RUN, "Run the existing Windows-target fixture check; Windows runtime is always not_run."),
-    ToolSpec("checks_pr", Safety.WRITE_LOCAL, "Run the configured repository-bound pre-push check, including its fetch; never push or publish.", open_world=True),
-    ToolSpec("ci_read", Safety.READ, "Read allowlisted PR or run checks and failing test names; compare with completed main runs without rerunning or modifying CI.", open_world=True),
+    ToolSpec("build_plan", Safety.WRITE_LOCAL, "Retain a conservative pinned build plan and dry-run evidence; never build or request a gate.", idempotent=False, shell_route="Pinned build/donor planning and compiler dry-run inspection"),
+    ToolSpec("build_start", Safety.RUN, "Start an operator-approved build plan as an owned gated Job; never prepare shaders, accept SDK terms or upgrade dependencies.", shell_route="Gated full/reused build wrappers and completion bookkeeping"),
+    ToolSpec("checks_source", Safety.RUN, "Run the reviewed game-free suite or exact declared test names; optionally compare only failures with a reviewed base commit.", shell_route="Idle-gated source test runner and failing-name comparison"),
+    ToolSpec("checks_windows_syntax", Safety.RUN, "Run the existing Windows-target fixture check; Windows runtime is always not_run.", shell_route="Windows-target fixture check wrapper (not Windows runtime)"),
+    ToolSpec("checks_pr", Safety.WRITE_LOCAL, "Run the configured repository-bound pre-push check, including its fetch; never push or publish.", open_world=True, shell_route="Repository-bound pre-push check; whole imported-commit attestations only"),
+    ToolSpec("ci_read", Safety.READ, "Read allowlisted PR or run checks and failing test names; compare with completed main runs without rerunning or modifying CI.", open_world=True, shell_route="CI reader plus failed-job/log and matching-main inspection"),
 )
 
 ArtifactId = Annotated[str, Field(pattern=r"^artifact_[0-9a-f]{32}$")]

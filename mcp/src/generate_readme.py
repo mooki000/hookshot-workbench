@@ -26,7 +26,8 @@ async def catalogue() -> str:
             async with Client(build_server(deps=deps)) as client:
                 for tool in await client.list_tools():
                     entry = rows.setdefault(tool.name, {"tool": tool, "group": deps.groups[tool.name],
-                        "safety": deps.specs[tool.name].safety.value, "profiles": []})
+                        "safety": deps.specs[tool.name].safety.value, "profiles": [],
+                        "broker": deps.specs[tool.name].requires_broker, "route": deps.specs[tool.name].shell_route})
                     entry["profiles"].append(profile)
                 for resource in await client.list_resources():
                     key = str(resource.uri)
@@ -36,11 +37,12 @@ async def catalogue() -> str:
                     resources.setdefault(key, {"description": template.description or "", "profiles": []})["profiles"].append(profile)
                 for prompt in await client.list_prompts():
                     prompts.setdefault(prompt.name, {"description": prompt.description or "", "profiles": []})["profiles"].append(profile)
-    text = [START, "", "### Tools", "", "| Tool | Group | Safety | Profiles | Required arguments | Purpose |", "|---|---|---|---|---|---|"]
+    text = [START, "", "### Tools", "", "| Tool | Group | Safety | Profiles | CLI broker | Required arguments | Replaces |", "|---|---|---|---|---|---|---|"]
     for name, entry in sorted(rows.items()):
         tool = entry["tool"]
         required = ", ".join(tool.input_schema.get("required", [])) or "none"
-        text.append("| " + " | ".join(map(cell, (f"`{name}`", entry["group"], entry["safety"], ", ".join(entry["profiles"]), required, tool.description))) + " |")
+        text.append("| " + " | ".join(map(cell, (f"`{name}`", entry["group"], entry["safety"], ", ".join(entry["profiles"]),
+            "yes" if entry["broker"] else "no", required, entry["route"]))) + " |")
     text.extend(["", "### Resources", "", "| URI or template | Profiles | Purpose |", "|---|---|---|"])
     for uri, entry in sorted(resources.items()):
         text.append("| " + " | ".join(map(cell, (f"`{uri}`", ", ".join(entry["profiles"]), entry["description"]))) + " |")

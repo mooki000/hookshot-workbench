@@ -15,6 +15,9 @@ class Deps:
     groups: dict[str, str] = field(default_factory=dict)
     selected: frozenset[str] = frozenset()
     gates: object | None = None
+    services: dict[str, object] = field(default_factory=dict)
+    shutdown_reason: str = "server_shutdown"
+    reconcile_on_open: bool = True
 
     def __post_init__(self):
         validate_state_root(self.config)
@@ -25,11 +28,14 @@ class Deps:
         if self.gates is None:
             self.gates = GateReader(self.config)
         self._cleanups = []
+        self._pre_cleanups = []
 
     error = staticmethod(fail)
 
     async def open(self):
         self.registry.open()
+        if not self.reconcile_on_open:
+            return
         cursor = 0
         while True:
             page = self.registry.list_jobs(cursor=cursor, limit=100, active_only=True)
@@ -39,18 +45,22 @@ class Deps:
                 break
             cursor = page.next_cursor
 
-    def add_cleanup(self, cleanup):
-        self._cleanups.append(cleanup)
+    def add_cleanup(self, cleanup, *, before_workers=False):
+        (self._pre_cleanups if before_workers else self._cleanups).append(cleanup)
 
     async def close(self):
         try:
-            await self.supervisor.close()
+            for cleanup in reversed(self._pre_cleanups):
+                await cleanup()
         finally:
             try:
-                for cleanup in reversed(self._cleanups):
-                    await cleanup()
+                await self.supervisor.close()
             finally:
-                self.registry.close()
+                try:
+                    for cleanup in reversed(self._cleanups):
+                        await cleanup()
+                finally:
+                    self.registry.close()
 
     def tool(self, mcp, name: str):
         spec = self.specs[name]
@@ -61,4 +71,5 @@ class Deps:
 
     def tool_catalogue(self) -> list[dict]:
         return [{"name": name, "group": self.groups[name], "safety": self.specs[name].safety.value,
-                 "annotations": self.specs[name].annotations} for name in sorted(self.selected)]
+                 "annotations": self.specs[name].annotations, "requires_broker": self.specs[name].requires_broker,
+                 "shell_route": self.specs[name].shell_route} for name in sorted(self.selected)]

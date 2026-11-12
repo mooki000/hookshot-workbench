@@ -38,6 +38,7 @@ class Config:
     protected_roots: tuple[Path, ...] = ()
     profile: str = "observe"
     extra_tools: tuple[str, ...] = ()
+    broker_idle_seconds: float = 60
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Config":
@@ -57,6 +58,12 @@ class Config:
         state = path("STATE_ROOT") or _absolute(e.get("XDG_STATE_HOME", str(home / ".local/state"))) / "hookshot-workbench"
         # Secrets and ordinary download folders can never be registered as data roots.
         protected = (home / ".config", home / ".ssh", home / "Downloads", *roots("PROTECTED_ROOTS"))
+        try:
+            idle = float(e.get(PREFIX + "BROKER_IDLE_SECONDS", "60"))
+            if not 0.05 <= idle <= 3600:
+                raise ValueError
+        except ValueError:
+            raise ValueError("HOOKSHOT_WB_BROKER_IDLE_SECONDS must be between 0.05 and 3600") from None
         knowledge = None
         knowledge_reason = "not_configured"
         if knowledge_path := path("KNOWLEDGE_CONFIG"):
@@ -72,6 +79,7 @@ class Config:
             idle_gate=path("IDLE_GATE"), panels_script=path("PANELS_SCRIPT"), journal_reader=path("JOURNAL_READER"),
             session_catalogue=path("SESSION_CATALOGUE"), checks_catalogue=path("CHECKS_CATALOGUE"),
             knowledge=knowledge, knowledge_unavailable_reason=knowledge_reason,
+            broker_idle_seconds=idle,
             checkout=path("CHECKOUT"), dependency_python=path("DEPENDENCY_PYTHON") or Path(sys.executable),
             read_roots=roots("READ_ROOTS"), write_roots=roots("WRITE_ROOTS"),
             protected_roots=protected, profile=e.get(PREFIX + "PROFILE", "observe"),

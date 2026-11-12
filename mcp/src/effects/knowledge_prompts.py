@@ -1,6 +1,6 @@
 """Plans cite installed sections verbatim; no prompt grants an execution permission."""
 import re
-from src.effects.knowledge_common import text
+from src.effects.knowledge_common import config, text
 from src.effects.knowledge_documents import document
 
 # These are section selectors, not copied policies or machine-specific recipes.
@@ -43,6 +43,8 @@ def sections(lines):
 def prompt_plan_impl(deps, name, inputs):
     if name not in PLANS or any(not isinstance(v, str) or not 1 <= len(v) <= 2048 for v in inputs.values()):
         raise deps.error("invalid_argument", name)
+    if config(deps).skills_dir is None:
+        raise deps.error("unavailable", name)
     steps = []
     for skill, selector in PLANS[name]:
         lines, revision, _ = document(deps, "skills", skill)

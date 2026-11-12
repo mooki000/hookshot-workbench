@@ -8,18 +8,18 @@ from src.models.session import (Cursor, Idempotency, InputStep, Key, Label, Limi
 from src.policy import Safety, ToolSpec
 
 SPECS = (
-    ToolSpec("session_launch", Safety.RUN, "Submit a bounded disposable windowless session through the configured wrapper and gate. Returns a Job; no direct launch."),
-    ToolSpec("session_input", Safety.WRITE_LOCAL, "Submit owned typed input. Frames are game presents; hos at is seconds and duration milliseconds, rounded half away from zero at 60 frames/s. Completion is effect_unverified."),
-    ToolSpec("session_state", Safety.READ, "Read bounded state with sample age and capability. Missing sampled-frame freshness remains unknown."),
-    ToolSpec("session_wait", Safety.READ, "Submit a bounded observed predicate wait as a Job. Cancelling it never stops the game or resends input."),
-    ToolSpec("session_shot", Safety.WRITE_LOCAL, "Capture to a new server-chosen run path; return artifact metadata, not image bytes. No overlay.", idempotent=False),
-    ToolSpec("session_options_get", Safety.READ, "Read bounded canonical settings with a cursor."),
-    ToolSpec("session_options_set", Safety.WRITE_LOCAL, "Set owned-run canonical options, returning before/after. Device, window, microphone and resource-class changes refuse.", idempotent=False),
-    ToolSpec("session_teleport", Safety.WRITE_LOCAL, "Submit one debug travel to a bridge-listed destination on a disposable debug profile. No replay on uncertain acceptance."),
-    ToolSpec("session_age", Safety.WRITE_LOCAL, "Submit one age change on a disposable debug profile; unavailable commands never fall back to cheats."),
-    ToolSpec("session_saves_list", Safety.READ, "Read bounded owned-session save metadata, not contents; consistency during writes is not guaranteed."),
-    ToolSpec("save_clone", Safety.WRITE_LOCAL, "Copy a registered save into a new owned directory with a private hash manifest. Never overwrite or modify a library."),
-    ToolSpec("session_stop", Safety.WRITE_LOCAL, "Submit owned disposable-session stop; observe game exit before gate release. Save draining is unsupported.", destructive=True),
+    ToolSpec("session_launch", Safety.RUN, "Submit a bounded disposable windowless session through the configured wrapper and gate. Returns a Job; no direct launch.", shell_route="Windowless wrapper setup, gate admission and bridge readiness journal"),
+    ToolSpec("session_input", Safety.WRITE_LOCAL, "Submit owned typed input. Frames are game presents; hos at is seconds and duration milliseconds, rounded half away from zero at 60 frames/s. Completion is effect_unverified.", shell_route="Typed control-client sequence or scoped release commands"),
+    ToolSpec("session_state", Safety.READ, "Read bounded state with sample age and capability. Missing sampled-frame freshness remains unknown.", shell_route="Control status plus sampled-state age and freshness checks", broker=True),
+    ToolSpec("session_wait", Safety.READ, "Submit a bounded observed predicate wait as a Job. Cancelling it never stops the game or resends input.", shell_route="Observed frame/state/map predicates, not guessed boot sleeps", broker=True),
+    ToolSpec("session_shot", Safety.WRITE_LOCAL, "Capture to a new server-chosen run path; return artifact metadata, not image bytes. No overlay.", idempotent=False, shell_route="Control screenshot into a fresh registered output"),
+    ToolSpec("session_options_get", Safety.READ, "Read bounded canonical settings with a cursor.", shell_route="Bounded canonical control option_get listing", broker=True),
+    ToolSpec("session_options_set", Safety.WRITE_LOCAL, "Set owned-run canonical options, returning before/after. Device, window, microphone and resource-class changes refuse.", idempotent=False, shell_route="Scoped control option_set and conditional restoration"),
+    ToolSpec("session_teleport", Safety.WRITE_LOCAL, "Submit one debug travel to a bridge-listed destination on a disposable debug profile. No replay on uncertain acceptance.", shell_route="One listed debug teleport plus observed arrival checks"),
+    ToolSpec("session_age", Safety.WRITE_LOCAL, "Submit one age change on a disposable debug profile; unavailable commands never fall back to cheats.", shell_route="Optional typed bridge age command, with no cheat fallback"),
+    ToolSpec("session_saves_list", Safety.READ, "Read bounded owned-session save metadata, not contents; consistency during writes is not guaranteed.", shell_route="Control saves metadata listing, not save-file export", broker=True),
+    ToolSpec("save_clone", Safety.WRITE_LOCAL, "Copy a registered save into a new owned directory with a private hash manifest. Never overwrite or modify a library.", shell_route="Fresh disposable copy of a registered seed with hashes"),
+    ToolSpec("session_stop", Safety.WRITE_LOCAL, "Submit owned disposable-session stop; observe game exit before gate release. Save draining is unsupported.", destructive=True, shell_route="Owned input/game shutdown before gate release and final receipt"),
 )
 
 

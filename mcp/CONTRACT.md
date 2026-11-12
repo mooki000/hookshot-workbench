@@ -21,7 +21,7 @@ lifespan starts; `close()` cancels and reaps this server's workers, then closes 
 | `tool(mcp, name)` | Decorator using the group's declared safety spec, registering only selected tools. Unselected decorators leave the function unregistered. |
 | `selected`, `specs` | Actual selected names and the complete validated `ToolSpec` map. Use these when adding resources. |
 | `gates` | Injected passive observation backend. `snapshot(device=None, request_pid=None, cursor=0, limit=50)` returns typed timestamped queue state without acquiring locks or creating files. |
-| `add_cleanup(fn)` | Register a bounded async cleanup callback. Lifespan invokes callbacks in reverse order after stopping owned workers. |
+| `add_cleanup(fn, before_workers=False)` | Register bounded async cleanup. Ordered session adapters use `before_workers=True` to stop games, retain evidence and record the reason before generic worker shutdown. Other callbacks run afterward, in reverse order. |
 
 `Config` includes `state_root`, `harness_dir`, `gpu_gate`, `intel_gate`, `build_gate`, `checkout`, `dependency_python`,
 `read_roots`, `write_roots`, `protected_roots`, `profile` and `extra_tools`. All host paths are absolute and operator-set;
@@ -187,3 +187,23 @@ Raise only the fixed envelope `{code, operation, retryable, retry_after_seconds,
 Middleware also converts schema validation and unexpected backend failures. Never infer mutation retryability from an
 exception type or re-run an uncertain mutation. Unknown capability/state remains null; timestamps accompany snapshots.
 Use bounded lists/cursors and artifact references instead of embedding log/image bytes. Logs go to stderr, not stdout.
+
+## CLI and broker integration
+
+Each `ToolSpec` declares a `shell_route` for the generated replacement catalogue. All non-READ tools require the
+CLI broker. READ tools needing a live owned session explicitly set `broker=True`; other READ tools use a one-shot
+real server. `requires_broker` is routing metadata, not an authorization bypass. `runtime.one_shot` refuses an
+owned-work tool, and broker requests use the exact same `tools.registry.select` profile function before real MCP calls.
+
+`Deps.services["session"]` contains the lifecycle-owned SessionService. Its `active_run_ids()` prevents idle broker
+shutdown while a live session is owned. `Deps.shutdown_reason` records explicit stop/signal/deadline teardown.
+Broker startup uses `reconcile_on_open=False`: it observes old Run/process ownership without adopting or terminalizing
+an orphan. The registry's `open_readonly`, `list_runs` and `run_process_owner` support bounded status without a new DB.
+
+`Registry.add_live_artifact` registers a growing owned file with null length/digest and `complete=False`. At exit,
+the producer registers a new complete artifact, replacing only the current Run reference and retaining the earlier
+metadata. Consumers must not interpret a live artifact as a stable hashed capture.
+
+The CLI's private broker protocol is internal, same-user Unix-only, bounded and versioned. No arbitrary endpoint,
+script or environment can be supplied through it. Its errors use the same envelope as MCP. Do not reuse a Job's PID
+to recover an orphan, add automatic mutation retries, or let service idle expiry cancel a live session.

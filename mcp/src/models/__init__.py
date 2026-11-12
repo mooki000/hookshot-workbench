@@ -146,6 +146,12 @@ class JobPage(Record):
     observed_at: str
 
 
+class RunPage(Record):
+    runs: list[Run]
+    next_cursor: int | None
+    observed_at: str
+
+
 class JobView(Record):
     job: Job
     events: EventPage
