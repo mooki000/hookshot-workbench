@@ -161,6 +161,7 @@ uv run python -m src.generate_readme --check
 - SQLite WAL transactions serialize independent server processes. State/receipt/event updates are durable; terminal
   records cannot be rewritten. Queue time and held time are separate. A guardian's receipt, not a launcher's return,
   records child exit and descendant cleanup. Server death triggers owned-worker cleanup; startup reconciles receipts.
+  A separate bounded state-root initialization lock protects SQLite's first WAL transition; it is not a gate lock.
 - Run and artifact metadata carry provenance and real instrument clocks. Unknown is null, never a fabricated zero.
   Raw files stay local; large results use artifact references. Producing a picture is not evidence somebody inspected it.
 

@@ -1,8 +1,11 @@
 """SQLite WAL registry with short transactions and immutable attempt identities."""
+import fcntl
 import hashlib
 import json
+import os
 import re
 import sqlite3
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -70,6 +73,24 @@ class Registry:
 
     def open(self) -> None:
         self.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # SQLite's journal-mode transition can fail immediately under concurrent
+        # first opens despite busy_timeout. Serialize only registry initialization.
+        fd = os.open(self.state_root / "registry.init.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise fail("busy", "registry", retryable=True) from None
+                    time.sleep(0.02)
+            self._initialize()
+        finally:
+            os.close(fd)
+
+    def _initialize(self) -> None:
         # Never follow a pre-planted registry link.
         if self.path.is_symlink():
             raise fail("refused_by_policy", "registry")
