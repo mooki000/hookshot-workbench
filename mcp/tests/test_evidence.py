@@ -361,10 +361,14 @@ async def test_bundle_generated_numbers_failures_and_private_draft(edeps):
     pairing = await stored_pair(edeps)
     items = [item for pair in pairing.pairs for item in (pair.candidate, pair.reference)]
     image = image_artifact(edeps)
-    build = add(edeps, edeps.config.state_root / "build.json", json.dumps({"commit": "b" * 40, "complete": True}),
-                "application/json", tool="build_start")
+    build_run = edeps.registry.create_run(state=State.COMPLETED, build={"commit": "b" * 40})
+    build = add(edeps, edeps.config.state_root / "build.json", json.dumps({
+        "commit": "b" * 40, "binary_hashes": {"fixture": "0" * 64},
+        "completed_receipt": {"kind": "builder_done", "exit": 0}}),
+        "application/json", run_id=build_run.run_id, tool="build_start")
     check = edeps.registry.create_job("checks_source")
-    check_result = store_json(edeps, output_directory(edeps), "check.json", {"head": "b" * 40, "scope": "full"}, "checks_source")
+    check_result = store_json(edeps, output_directory(edeps), "check.json", {
+        "commit": "b" * 40, "coverage": "suite", "table_complete": True, "failed": 0, "exit": 0}, "checks_source")
     edeps.registry.update_job(check.job_id, artifact_uris=[check_result.uri])
     edeps.registry.finish(check.job_id, State.COMPLETED, Receipt(job_id=check.job_id, observed_at=utc_now(), exit_code=0,
         stop_reason="exited", process_exited=True, descendants_exited=True, queue_seconds=0, held_seconds=1))

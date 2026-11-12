@@ -2,7 +2,7 @@
 from importlib import import_module
 from src.policy import Safety, check_spec
 
-GROUPS = ("status",)
+GROUPS = ("status", "checks", "evidence", "knowledge", "session")
 
 
 def configure(deps):
@@ -14,6 +14,7 @@ def configure(deps):
             if spec.name in specs:
                 raise ValueError("Duplicate tool: " + spec.name)
             specs[spec.name] = spec
+            deps.groups[spec.name] = group.__name__.rsplit(".", 1)[-1]
     if deps.config.profile not in {"observe", "operate"}:
         raise ValueError("Unknown tool profile: " + deps.config.profile)
     unknown = set(deps.config.extra_tools) - specs.keys()

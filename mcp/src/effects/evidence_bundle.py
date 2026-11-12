@@ -20,17 +20,21 @@ def evidence_bundle_impl(deps, request):
     builds = []
     for ident in request.build_artifact_ids:
         art, data = read_json(deps, ident, tool)
-        if art.producer.tool not in {"build_start", "build_manifest", "build_register"} or not isinstance(data, dict):
+        if art.producer.tool != "build_start" or not isinstance(data, dict):
             raise deps.error("refused_by_policy", tool)
-        build = data.get("build", data)
-        if not isinstance(build, dict):
-            raise deps.error("invalid_argument", tool)
+        build = data
         commit = build.get("commit")
         if commit is not None and not re.fullmatch(r"[0-9a-f]{40}", commit):
             raise deps.error("invalid_argument", tool)
+        receipt = build.get("completed_receipt")
+        build_run = deps.registry.get_run(art.run_id) if art.run_id else None
+        completed = (isinstance(receipt, dict) and receipt.get("exit") == 0
+                     and receipt.get("kind") in {"builder_done", "linked_outputs"}
+                     and bool(build.get("binary_hashes")) and build_run is not None
+                     and build_run.state.value == "completed" and build_run.build.commit == commit)
         builds.append({"artifact_id": ident, "sha256": art.sha256, "commit": commit,
             "source_stamp": redact(str(build.get("source_stamp")))[0] if build.get("source_stamp") else None,
-            "complete": data.get("complete") is True or data.get("completed_receipt") is True})
+            "complete": completed})
     if not any(row["commit"] == request.head and row["complete"] for row in builds):
         missing.append("completed_build_receipt_for_head")
     checks = []
@@ -47,12 +51,18 @@ def evidence_bundle_impl(deps, request):
         for uri in job.artifact_uris[:16]:
             if not uri.startswith("workbench://artifacts/"):
                 continue
+            metadata = deps.registry.get_artifact(uri.rsplit("/", 1)[-1])
+            if metadata.mime != "application/json":
+                continue
             art, data = read_json(deps, uri.rsplit("/", 1)[-1], tool)
             if art.producer.tool == operation and isinstance(data, dict):
-                if data.get("head") == request.head:
+                if operation == "checks_source" and data.get("commit") == request.head:
                     checks[-1]["tested_head"] = request.head
-                if data.get("scope") in {"full", "targeted", "syntax", "runtime"}:
-                    checks[-1]["scope"] = data["scope"]
+                    if data.get("table_complete") is True and data.get("failed") == 0 and data.get("exit") == 0:
+                        checks[-1]["scope"] = {"suite": "full", "named": "targeted"}.get(data.get("coverage"))
+                elif art.producer.source_commit == request.head:
+                    checks[-1]["tested_head"] = request.head
+                    checks[-1]["scope"] = "syntax" if operation == "checks_windows_syntax" else None
     if not any(row["operation"] == "checks_source" and row["state"] == "completed" and row["tested_head"] == request.head
                and row["scope"] == "full" and row["receipt"] and row["receipt"]["exit_code"] == 0 for row in checks):
         missing.append("full_source_suite_on_exact_head")

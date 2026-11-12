@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 from src.models import JobPage, JobView, WaitResult, TERMINAL, utc_now
 from src.models.gates import QueueSnapshot
+from src.models.status import CancelResult, WorkbenchStatus
 from src.policy import Safety, ToolSpec
 
 SPECS = (
@@ -17,7 +18,7 @@ SPECS = (
 )
 
 Limit = Annotated[int, Field(ge=1, le=100)]
-Cursor = Annotated[int, Field(ge=0)]
+Cursor = Annotated[int, Field(ge=0, le=9223372036854775807)]
 JobId = Annotated[str, Field(pattern=r"^job_[0-9a-f]{32}$")]
 
 
@@ -27,12 +28,18 @@ def status(deps) -> dict:
         present = path is not None and (path.is_dir() if kind == "directory" else path.is_file())
         return {"status": "configured" if present else "unavailable",
                 "reason": None if present else "not_configured_or_missing", "connectivity": None}
+    capabilities = {name: available(path, kind) for name, path, kind in (
+        ("harness", config.harness_dir, "directory"), ("trusted_checkout", config.checkout, "directory"),
+        ("gpu_gate", config.gpu_gate, "file"), ("intel_gate", config.intel_gate, "file"),
+        ("build_gate", config.build_gate, "file"), ("idle_gate", config.idle_gate, "file"),
+        ("dependency_python", config.dependency_python, "file"), ("session_catalogue", config.session_catalogue, "file"),
+        ("checks_catalogue", config.checks_catalogue, "file"), ("panels_script", config.panels_script, "file"),
+        ("journal_reader", config.journal_reader, "file"))}
+    capabilities["knowledge"] = {"status": "configured" if config.knowledge is not None else "unavailable",
+        "reason": config.knowledge_unavailable_reason if config.knowledge is None else None, "connectivity": None}
     gate_summary = deps.gates.snapshot()
     return {"observed_at": utc_now(), "policy": deps.policy.snapshot().model_dump(),
-            "capabilities": {name: available(path, kind) for name, path, kind in (
-                ("harness", config.harness_dir, "directory"), ("trusted_checkout", config.checkout, "directory"),
-                ("gpu_gate", config.gpu_gate, "file"), ("intel_gate", config.intel_gate, "file"),
-                ("build_gate", config.build_gate, "file"), ("dependency_python", config.dependency_python, "file"))},
+            "capabilities": capabilities,
             "active_jobs": deps.registry.list_jobs(active_only=True).model_dump(),
             "protected_player_active": None,
             "gate_summary": gate_summary.model_dump(),
@@ -55,8 +62,8 @@ async def wait_job(deps, job_id: str, timeout_seconds: float) -> WaitResult:
 
 def register(mcp, deps):
     @deps.tool(mcp, "workbench_status")
-    async def workbench_status() -> dict:
-        return status(deps)
+    async def workbench_status() -> WorkbenchStatus:
+        return WorkbenchStatus.model_validate(status(deps))
 
     @deps.tool(mcp, "queue_status")
     async def queue_status(device: Literal["gpu", "intel", "build"] | None = None,
@@ -83,5 +90,5 @@ def register(mcp, deps):
         return await wait_job(deps, job_id, timeout_seconds)
 
     @deps.tool(mcp, "job_cancel")
-    async def job_cancel(job_id: JobId) -> dict:
-        return await deps.supervisor.cancel(job_id)
+    async def job_cancel(job_id: JobId) -> CancelResult:
+        return CancelResult.model_validate(await deps.supervisor.cancel(job_id))

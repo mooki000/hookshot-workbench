@@ -48,7 +48,7 @@ def gh_pages():
 
 @pytest.fixture
 def kb(tmp_path, monkeypatch):
-    monkeypatch.setattr(registry, "GROUPS", (*registry.GROUPS, "knowledge"))
+    monkeypatch.setattr(registry, "GROUPS", tuple(dict.fromkeys((*registry.GROUPS, "knowledge"))))
     bin_dir = tmp_path / "bin"
     scripts = tmp_path / "checkout" / "scripts"
     skills = tmp_path / "skills"

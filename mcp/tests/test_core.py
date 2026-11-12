@@ -6,31 +6,70 @@ from pathlib import Path
 import pytest
 from fastmcp import Client
 from src.config import Config
+from src.deps import Deps
 from src.errors import WorkbenchError
 from src.main import build_server, configure_logging
 from src.models import State, Receipt, Producer, utc_now
 from src.policy import DENIED_TOOLS, Safety, ToolSpec, check_spec, PathGuards, Policy, child_environment
 
+REQUIRED = {
+    "workbench_status": [], "queue_status": [], "jobs_list": [],
+    "job_read": ["job_id"], "job_wait": ["job_id"], "job_cancel": ["job_id"],
+    "build_plan": ["repo_id", "commit", "profile_id"], "build_start": ["plan_id", "idempotency_key"],
+    "checks_source": ["repo_id", "commit", "idempotency_key"],
+    "checks_windows_syntax": ["repo_id", "commit", "base", "idempotency_key"],
+    "checks_pr": ["repo_id", "commit", "branch", "title_artifact", "idempotency_key"],
+    "ci_read": ["repository"], "run_logs": ["run_id"], "run_faults": ["run_id"],
+    "evidence_analyze": ["run_id", "analyzer_id", "arguments", "idempotency_key"],
+    "evidence_scan_frames": ["capture_artifact_id", "idempotency_key"],
+    "evidence_panels": ["images", "label", "idempotency_key"],
+    "evidence_compare": ["pairing"], "evidence_bundle": ["request"],
+    "github_thread_read": ["repository", "number"], "github_watch": ["threads", "timeout_seconds", "idempotency_key"],
+    "prloop_refresh": ["snapshot_id", "idempotency_key"], "prloop_next": [], "test_requests_read": [],
+    "team_read": ["room"], "nightly_status": [], "knowledge_search": ["query"],
+    "session_launch": ["build_id", "profile_id", "wall_seconds", "idempotency_key"],
+    "session_input": ["run_id", "steps", "units", "idempotency_key"], "session_state": ["run_id"],
+    "session_wait": ["run_id", "predicate", "idempotency_key"], "session_shot": ["run_id"],
+    "session_options_get": ["run_id"], "session_options_set": ["run_id", "values"],
+    "session_teleport": ["run_id", "destination_id", "idempotency_key"],
+    "session_age": ["run_id", "age", "idempotency_key"], "session_saves_list": ["run_id"],
+    "save_clone": ["save_id", "idempotency_key"], "session_stop": ["run_id", "reason", "idempotency_key"],
+}
+READ_TOOLS = {
+    "workbench_status", "queue_status", "jobs_list", "job_read", "job_wait", "ci_read",
+    "run_logs", "run_faults", "evidence_compare", "github_thread_read", "prloop_next",
+    "test_requests_read", "team_read", "nightly_status", "knowledge_search",
+    "session_state", "session_wait", "session_options_get", "session_saves_list",
+}
 
-@pytest.mark.parametrize("profile,extra,cancel", [("observe", (), False), ("operate", (), True), ("observe", ("job_cancel",), True)])
-async def test_catalogue(config, profile, extra, cancel):
-    server = build_server(replace(config, profile=profile, extra_tools=extra))
+
+@pytest.mark.parametrize("profile,extra", [("observe", ()), ("operate", ()), ("observe", ("job_cancel",))])
+async def test_catalogue(config, profile, extra):
+    deps = Deps(replace(config, profile=profile, extra_tools=extra))
+    server = build_server(deps=deps)
     async with Client(server) as client:
         tools = {tool.name: tool for tool in await client.list_tools()}
-        assert set(tools) == {"workbench_status", "queue_status", "jobs_list", "job_read", "job_wait"} | ({"job_cancel"} if cancel else set())
+        assert set(tools) == (set(REQUIRED) if profile == "operate" else READ_TOOLS | set(extra))
+        assert set(deps.specs) == set(REQUIRED)
         assert not DENIED_TOOLS.intersection(tools)
         for name, tool in tools.items():
-            assert tool.annotations.read_only_hint == (name != "job_cancel")
-            assert tool.annotations.destructive_hint == (name == "job_cancel")
-            assert tool.annotations.idempotent_hint is True
-            assert tool.annotations.open_world_hint is False
-            assert tool.input_schema.get("required", []) == (["job_id"] if name in {"job_read", "job_wait", "job_cancel"} else [])
+            spec = deps.specs[name]
+            assert tool.annotations.read_only_hint == (name in READ_TOOLS)
+            assert tool.annotations.destructive_hint == spec.destructive
+            assert tool.annotations.idempotent_hint == spec.idempotent
+            assert tool.annotations.open_world_hint == spec.open_world
+            assert set(tool.input_schema.get("required", [])) == set(REQUIRED[name])
         result = await client.call_tool("workbench_status")
-        assert result.data["protected_player_active"] is None
-        assert result.data["capabilities"]["harness"]["status"] == "unavailable"
-        assert {r.uri for r in await client.list_resources()} == {"workbench://policy", "workbench://tools"}
+        assert result.structured_content["protected_player_active"] is None
+        assert result.structured_content["capabilities"]["harness"]["status"] == "unavailable"
+        resources = {r.uri for r in await client.list_resources()}
+        assert {"workbench://policy", "workbench://tools"} <= resources
+        assert ("workbench://evidence/analyzers" in resources) == (profile == "operate")
         templates = {r.uri_template for r in await client.list_resource_templates()}
-        assert templates == {"workbench://runs/{id}", "workbench://jobs/{id}/events{?cursor,limit}"}
+        assert {"workbench://runs/{id}", "workbench://jobs/{id}/events{?cursor,limit}"} <= templates
+        assert {p.name for p in await client.list_prompts()} == {
+            "prove_fix", "compare_builds", "reproduce_issue", "test_requested_pr",
+            "recover_or_cancel", "prepare_evidence_handoff"}
 
 
 def test_unknown_profile_and_extras(config):

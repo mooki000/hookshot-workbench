@@ -375,11 +375,13 @@ class Registry:
         path = guards.read(path)
         if run_id:
             self.get_run(run_id)
-        with path.open("rb") as stream:
-            before = path.stat()
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as stream:
+            before = os.fstat(stream.fileno())
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
-            after = path.stat()
-        if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
+            after = os.fstat(stream.fileno())
+        location = path.stat(follow_symlinks=False)
+        identities = {(s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns) for s in (before, after, location)}
+        if len(identities) != 1:
             raise fail("busy", "artifact_register", retryable=True)
         ident = new_id("artifact")
         artifact = Artifact(id=ident, uri="workbench://artifacts/" + ident, mime=mime,

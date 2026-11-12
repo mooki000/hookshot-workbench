@@ -19,12 +19,14 @@ def cell(text) -> str:
 async def catalogue() -> str:
     rows = {}
     resources = {}
+    prompts = {}
     with tempfile.TemporaryDirectory(prefix="workbench-catalogue-") as folder:
         for profile in ("observe", "operate"):
             deps = Deps(Config(state_root=Path(folder) / profile, profile=profile))
             async with Client(build_server(deps=deps)) as client:
                 for tool in await client.list_tools():
-                    entry = rows.setdefault(tool.name, {"tool": tool, "safety": deps.specs[tool.name].safety.value, "profiles": []})
+                    entry = rows.setdefault(tool.name, {"tool": tool, "group": deps.groups[tool.name],
+                        "safety": deps.specs[tool.name].safety.value, "profiles": []})
                     entry["profiles"].append(profile)
                 for resource in await client.list_resources():
                     key = str(resource.uri)
@@ -32,14 +34,19 @@ async def catalogue() -> str:
                 for template in await client.list_resource_templates():
                     key = template.uri_template
                     resources.setdefault(key, {"description": template.description or "", "profiles": []})["profiles"].append(profile)
-    text = [START, "", "### Tools", "", "| Tool | Safety | Profiles | Required arguments | Purpose |", "|---|---|---|---|---|"]
+                for prompt in await client.list_prompts():
+                    prompts.setdefault(prompt.name, {"description": prompt.description or "", "profiles": []})["profiles"].append(profile)
+    text = [START, "", "### Tools", "", "| Tool | Group | Safety | Profiles | Required arguments | Purpose |", "|---|---|---|---|---|---|"]
     for name, entry in sorted(rows.items()):
         tool = entry["tool"]
         required = ", ".join(tool.input_schema.get("required", [])) or "none"
-        text.append("| " + " | ".join(map(cell, (f"`{name}`", entry["safety"], ", ".join(entry["profiles"]), required, tool.description))) + " |")
+        text.append("| " + " | ".join(map(cell, (f"`{name}`", entry["group"], entry["safety"], ", ".join(entry["profiles"]), required, tool.description))) + " |")
     text.extend(["", "### Resources", "", "| URI or template | Profiles | Purpose |", "|---|---|---|"])
     for uri, entry in sorted(resources.items()):
         text.append("| " + " | ".join(map(cell, (f"`{uri}`", ", ".join(entry["profiles"]), entry["description"]))) + " |")
+    text.extend(["", "### Prompts", "", "| Prompt | Profiles | Purpose |", "|---|---|---|"])
+    for name, entry in sorted(prompts.items()):
+        text.append("| " + " | ".join(map(cell, (f"`{name}`", ", ".join(entry["profiles"]), entry["description"]))) + " |")
     text.extend(["", END])
     return "\n".join(text)
 
@@ -52,6 +59,10 @@ def replace_catalogue(existing: str, generated: str) -> str:
     return before + generated + after
 
 
+def catalogue_document(generated: str) -> str:
+    return "# Registered workbench MCP catalogue\n\nGenerated from the real registered server; do not edit by hand.\n" + generated.removeprefix(START).removesuffix(END).rstrip() + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true")
@@ -59,13 +70,16 @@ def main():
     args = parser.parse_args()
     generated = asyncio.run(catalogue())
     path = Path(__file__).resolve().parents[1] / "README.md"
+    catalogue_path = path.with_name("CATALOGUE.md")
+    document = catalogue_document(generated)
     if args.write or args.check:
         existing = path.read_text()
         updated = replace_catalogue(existing, generated)
         if args.write:
             path.write_text(updated)
-        elif updated != existing:
-            raise SystemExit("README catalogue is stale; run python -m src.generate_readme --write")
+            catalogue_path.write_text(document)
+        elif updated != existing or not catalogue_path.exists() or catalogue_path.read_text() != document:
+            raise SystemExit("Generated catalogue is stale; run python -m src.generate_readme --write")
     else:
         print(generated)
 

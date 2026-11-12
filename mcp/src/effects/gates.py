@@ -123,7 +123,8 @@ class GateReader:
         basis = "Lock proves occupancy; its acquisition time is not recorded."
         if layout is not None and pid is not None and birth is not None:
             holder = layout.directory / ("holder." + slot)
-            if _text(holder) == str(pid) + "\n" or _text(holder) == str(pid):
+            recorded = _text(holder)
+            if recorded is not None and recorded.strip() == str(pid):
                 try:
                     stamp = holder.stat().st_mtime
                     birth_time = self._birth_epoch(birth)
@@ -166,6 +167,9 @@ class GateReader:
                         born = self._birth_epoch(birth)
                         # The ticket embeds ordering time, not its file mtime (yielding rewrites it).
                         valid = asked <= now and born is not None and asked >= born - 1
+                        if born is not None and asked < born - 1:
+                            stale += 1
+                            continue
                         resource_class = "exclusive" if "--exclusive" in command else "whole" if "--whole" in command else "ordinary"
                         live.append(Waiter(observed_at=observed_at, ticket=entry.name, pid=pid,
                             process_start_ticks=birth.start_ticks,
@@ -233,8 +237,10 @@ class GateReader:
                             pid = int(match[1])
                             if gpu_layout and self._gate_process(pid, gpu_layout)[0] is not None:
                                 wanted.append(pid)
-                            else:
+                            elif gpu_layout is not None:
                                 stale_markers += 1
+                            else:
+                                quiet_complete = False
             except OSError:
                 quiet_complete = False
         quiet_known = locks_known and quiet_key is not None and quiet_complete

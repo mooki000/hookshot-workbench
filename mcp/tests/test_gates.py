@@ -174,3 +174,11 @@ def test_queue_pagination(gate_fixture):
     assert len(page.waiters) == 2 and page.next_cursor == 2
     page2 = reader.snapshot("gpu", cursor=page.next_cursor, limit=2).devices[0]
     assert not {w.ticket for w in page.waiters} & {w.ticket for w in page2.waiters}
+
+
+def test_reused_gate_pid_does_not_revive_old_ticket(gate_fixture):
+    config, reader, paths, proc, process, ticket, lock = gate_fixture
+    process(101, born=NOW - 10)
+    ticket(101, age=60)
+    result = reader.snapshot("gpu").devices[0]
+    assert result.stale_tickets == 1 and result.waiters == []

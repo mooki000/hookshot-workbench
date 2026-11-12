@@ -12,6 +12,7 @@ from src.registry.supervisor import Supervisor
 class Deps:
     config: Config
     specs: dict[str, ToolSpec] = field(default_factory=dict)
+    groups: dict[str, str] = field(default_factory=dict)
     selected: frozenset[str] = frozenset()
     gates: object | None = None
 
@@ -59,5 +60,5 @@ class Deps:
             annotations=spec.annotations, tags={spec.safety.value})
 
     def tool_catalogue(self) -> list[dict]:
-        return [{"name": name, "safety": self.specs[name].safety.value,
+        return [{"name": name, "group": self.groups[name], "safety": self.specs[name].safety.value,
                  "annotations": self.specs[name].annotations} for name in sorted(self.selected)]

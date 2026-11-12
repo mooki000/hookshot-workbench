@@ -486,3 +486,23 @@ def test_bounded_capture_retains_fixed_error(bench):
         capture([sys.executable, "-c", "print('x' * 1024)"], cwd=bench.tmp, limit=64)
     assert failure.value.envelope.code == "backend_failed"
     assert str(bench.tmp) not in str(failure.value)
+
+
+async def test_real_check_outputs_feed_registered_evidence_bundle(bench, monkeypatch):
+    monkeypatch.setattr(registry, "GROUPS", ("status", "checks", "evidence"))
+    async with Client(build_server(deps=bench.deps)) as client:
+        plan = await approved_plan(client, bench)
+        built = await call(client, "build_start", plan_id=plan["artifact"]["id"], idempotency_key="bundle-build")
+        assert (await finished(client, built["job_id"]))["job"]["state"] == "completed"
+        build_job = bench.deps.registry.get_job(built["job_id"])
+        build_artifact = next(uri.rsplit("/", 1)[-1] for uri in build_job.artifact_uris
+            if bench.deps.registry.artifact_path(uri.rsplit("/", 1)[-1], bench.deps.paths).name == "build-manifest.json")
+        set_control(bench, many=True)
+        checked = await call(client, "checks_source", repo_id="fixture", commit=bench.head, idempotency_key="bundle-suite")
+        assert (await finished(client, checked["job_id"]))["job"]["state"] == "completed"
+        result = await call(client, "evidence_bundle", request={
+            "base": bench.base, "head": bench.head, "topic": "Synthetic integration", "rule": "source",
+            "build_artifact_ids": [build_artifact], "check_ids": [checked["job_id"]]})
+        assert "completed_build_receipt_for_head" not in result["missing_requirements"]
+        assert "full_source_suite_on_exact_head" not in result["missing_requirements"]
+        assert result["publication"] == "not_published"

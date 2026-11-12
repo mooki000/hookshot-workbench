@@ -53,8 +53,9 @@ async def submit_evidence_job(deps, operation, request, idempotency_key, wall_se
     payload = {"operation": operation, "job_id": job.job_id, "request": request,
                "plan_hash": digest, "config": host_payload(deps.config)}
     spec = write_new(deps, root / "request.json", json.dumps(payload, sort_keys=True))
-    # Input runs are references, not owned lifecycle children of an analysis Job.
+    # Input runs are references; only Registry.own_run opts into lifecycle propagation.
     deps.registry.update_job(job.job_id, phase="waiting_for_idle",
+                             run_ids=[request["run_id"]] if request.get("run_id") else [],
                              progress_text="Waiting for the configured idle gate")
     # The interpreter belongs to this installed server. dependency_python is only for trusted upstream CLI backends.
     return await deps.supervisor.start(job.job_id,
