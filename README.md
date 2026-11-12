@@ -37,6 +37,10 @@ the scripts were written by them under those rules, then run and checked here. T
   frame log, and one summary line (exit, frames, mean and 1% low, slow frames, fatal and device-lost lines, kernel
   driver lines, the load before and after). `--intel` runs on the integrated GPU, `--window` opens a real window for
   what needs a swapchain, `--input` plays a press script, `--user` uses a throwaway save folder.
+  The wrapper's exit status is not the game's: after a completed run and summary it returns 0 even if the game
+  failed. Read `exit.txt` (also `exit=` in the summary) for the game's status; 124 means the wall-time limit.
+  If the gate leaves no game exit receipt, the wrapper returns the gate's status. A failure of the Python summary
+  generator returns nonzero.
 - **`harness/hs-idle.sh <command>`**: runs the game-free checks (`tests/run_all.py`) in the idle scheduling class, three
   at a time, never beside a timing run, and with core dumps switched off.
 - **`harness/hs-nocore.sh <command>`**: runs one command with core dumps off. Hookshot's checks crash three fixture
