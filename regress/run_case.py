@@ -194,8 +194,8 @@ def source_stamp(copy):
 
 
 def stamp_in_log(text, stamp):
-    """True when the run's log names that source stamp (or the copy has none to check): the binary that ran is the one built."""
-    return not stamp or re.search(r'\(source ' + re.escape(stamp) + r'\)', text) is not None
+    """True only when nonempty build provenance matches the binary's log."""
+    return bool(stamp) and re.search(r'\(source ' + re.escape(stamp) + r'\)', text) is not None
 
 
 def quiet_measure(samples, lo, hi, span=5.0):
@@ -278,20 +278,83 @@ def analyse(run, settings, start_monotonic_ns=0, seconds=0):
     return result, blocks
 
 
+def kernel_records(text, intel=False):
+    """Classify a bounded journal interval; repeats belong to the preceding message."""
+    records, retained, previous = [], [], None
+    repeat = re.compile(r'(?:last (?:print|message)|message) repeated (\d+) times', re.I)
+    intel_fault = re.compile(r'(?i)(i915|xe ).*(hang|reset|error)')
+    fault = re.compile(r'NVRM: Xid|kmemsysDoCacheOp')
+    allocation = (re.compile(r'NV_ERR_NO_MEMORY.*_memdescAllocInternal.*\bmem_desc\.c\b'),
+                  re.compile(r'\brmStatus\b.*\bsystem_mem\.c\b'),
+                  re.compile(r'pRmApi->Alloc.*\bnv_gpu_ops\.c\b'))
+    repeats = 0
+    for line in text.splitlines():
+        marker = repeat.search(line)
+        if marker:
+            if previous is None:
+                previous = {'line': line, 'count': 1, 'second': None, 'orphan': True}
+                records.append(previous)
+                retained.append(line)
+            elif previous is not False:
+                n = int(marker[1])
+                previous['count'] += n
+                repeats += n
+                retained.append(line)
+            continue
+        previous = False
+        if 'NVRM' not in line and 'kmemsysDoCacheOp' not in line and not intel_fault.search(line):
+            continue
+        stamp = re.match(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d|[A-Z][a-z]{2} +\d+ \d\d:\d\d:\d\d)', line)
+        previous = {'line': line, 'count': 1, 'second': stamp[1] if stamp else None}
+        records.append(previous)
+        retained.append(line)
+    counts = {'kernel_errors': 0, 'memmap_lines': 0, 'no_memory_lines': 0, 'no_memory_events': 0,
+              'nvrm_lines': sum(r['count'] for r in records if 'NVRM' in r['line']), 'kernel_repeats': repeats}
+    index = 0
+    while index < len(records):
+        record = records[index]; line, n = record['line'], record['count']
+        if record.get('orphan'):
+            counts['kernel_errors'] += n
+        elif intel:
+            counts['kernel_errors'] += n if intel_fault.search(line) else 0
+        elif fault.search(line):
+            counts['kernel_errors'] += n
+        elif 'NVRM' not in line:
+            pass
+        elif 'memMap_IMPL: CPU mapping not supported for addressSpace: 0x1' in line:
+            counts['memmap_lines'] += n
+        else:
+            triple = records[index:index + 3]
+            if (len(triple) == 3 and record['second'] is not None and
+                    all(item['second'] == record['second'] and item['count'] == n and
+                        'NVRM' in item['line'] and not fault.search(item['line']) and pattern.search(item['line'])
+                        for item, pattern in zip(triple, allocation))):
+                counts['no_memory_lines'] += 3 * n
+                counts['no_memory_events'] += n
+                index += 3
+                continue
+            counts['kernel_errors'] += n
+        index += 1
+    if counts['no_memory_events'] > 3:
+        counts['kernel_errors'] += counts['no_memory_lines']
+    return '\n'.join(retained) + ('\n' if retained else ''), counts
+
+
 def kernel_lines(start, end, intel=False):
-    """The kernel's driver lines over the run: NVIDIA's, or with `intel` the i915/xe hang, reset and error lines (the
-    wrapper's own two counts)."""
-    text = subprocess.run(['journalctl', '-k', '--since', start, '--until', end, '--no-pager'], text=True,
-                          capture_output=True).stdout
-    if intel:
-        lines = [x for x in text.splitlines() if re.search(r'(?i)(i915|xe ).*(hang|reset|error)', x)]
-        return '\n'.join(lines) + '\n', {'kernel_errors': len(lines), 'memmap_lines': 0, 'no_memory_lines': 0, 'no_memory_events': 0}
-    lines = [x for x in text.splitlines() if 'NVRM' in x or 'kmemsysDoCacheOp' in x]
-    mem = [x for x in lines if 'memMap_IMPL: CPU mapping not supported for addressSpace: 0x1' in x]
-    oom = [x for x in lines if 'NV_ERR_NO_MEMORY' in x]
-    bad = [x for x in lines if x not in mem and x not in oom]
-    return '\n'.join(lines) + '\n', {'kernel_errors': len(bad), 'memmap_lines': len(mem), 'no_memory_lines': len(oom),
-                                     'no_memory_events': sum('_memdescAllocInternal' in x for x in oom)}
+    """Keep the journal receipt; unavailable or partial coverage is never zero faults."""
+    try:
+        completed = subprocess.run(['journalctl', '-k', '--since', start, '--until', end, '--no-pager',
+                                    '--output=short-iso'], text=True, capture_output=True)
+        retained, counts = kernel_records(completed.stdout, intel)
+        code, error = completed.returncode, completed.stderr.strip()
+    except OSError as exc:
+        retained, counts = kernel_records('', intel)
+        code, error = None, str(exc)
+    complete = code == 0 and not error
+    if not complete:
+        counts = dict.fromkeys(counts)
+    counts.update(kernel_status='complete' if complete else 'unknown', journal_exit=code, journal_stderr=error)
+    return retained, counts
 
 
 def setup(copy, output, settings, seconds):
@@ -461,7 +524,7 @@ def run_case(copy, output, scenario, seconds, commit):
     read = lambda name: (output / name).read_text().strip() if (output / name).exists() else ''
     loads = [s['load'] for s in samples]
     result = {'commit': commit, 'label': settings.get('label', ''), 'copy': str(copy), 'start': start, 'end': end,
-              'valid': False, 'disturbed': False, 'value': 0, 'wrapper_exit': rc, 'environment': env,
+              'valid': False, 'disturbed': False, 'value': None, 'wrapper_exit': rc, 'environment': env,
               'load_before': float(read('load-before.txt').split()[0]) if read('load-before.txt') else os.getloadavg()[0],
               'load_after': float(read('load-after.txt').split()[0]) if read('load-after.txt') else os.getloadavg()[0],
               'load_max': max(loads, default=0.0), 'others_cores': others_cores(samples), 'evidence': [str(output)],
@@ -485,7 +548,9 @@ def run_case(copy, output, scenario, seconds, commit):
     try:
         assert rc == 0 and code == (0 if settings.get('prepare') else 124), 'run did not reach its intended end'
         assert re.search(settings.get('device_pattern', r'vk: device 0: NVIDIA GeForce RTX 4090'), text), 'wrong or missing device'
-        assert not result['fatal'] and not kernel['kernel_errors'] and kernel['no_memory_events'] <= 3, 'run or kernel fault'
+        assert kernel['kernel_errors'] is not None, 'kernel journal coverage is unknown'
+        assert not result['fatal'] and kernel['kernel_errors'] == 0 and kernel['no_memory_events'] <= 3, 'run or kernel fault'
+        assert stamp, 'the copy has no source stamp'
         assert stamp_in_log(text, stamp), "the log lacks the copy's own source stamp " + stamp
         for pattern in settings.get('expect_log', []):
             assert re.search(pattern, text), 'log lacks ' + pattern
@@ -510,9 +575,14 @@ def run_case(copy, output, scenario, seconds, commit):
                 result['threads'] = thread_groups(samples, *window)
         result['measures'] = measures
         (output / 'log-blocks.json').write_text(json.dumps(blocks) + '\n')
-        result['value'] = measures.get(scenario['measure']['name'], 0)
         if scenario['measure']['direction'] == 'pass-fail':
             result['value'] = True
+        else:
+            name = scenario['measure']['name']
+            value = measures.get(name)
+            assert not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value), \
+                'missing or nonnumeric decision measure: ' + name
+            result['value'] = value
         if 'validator_command' in settings:
             command = [s.format(output=str(output), copy=str(copy)) for s in settings['validator_command']]
             with (output / 'validator.log').open('w') as log:
@@ -524,15 +594,19 @@ def run_case(copy, output, scenario, seconds, commit):
         result['valid'] = True
     except (AssertionError, OSError, ValueError, KeyError) as exc:
         result['problem'] = str(exc) or type(exc).__name__
+    if ((not result['valid'] or result['value'] is False) and result['kernel_errors'] is not None and
+            0 < result['no_memory_events'] <= 3):
+        result['kernel_errors'] += result['no_memory_lines']
     loud = scenario.get('kind') == 'timing' and result['valid'] and not settings.get('prepare') and not quiet_verdict(result, scenario)
-    result['disturbed'] = bool(result['fatal'] or result['kernel_errors'] or loud or (settings.get('window') and not result['valid']))
+    result['disturbed'] = bool(result['fatal'] or result['kernel_errors'] != 0 or loud or (settings.get('window') and not result['valid']))
     m = result.get('measures', {})
     f = lambda key, fmt, source=m: fmt % source[key] if isinstance(source.get(key), (int, float)) else '-'
-    result['summary'] = ('%s %s exit=%s valid=%s disturbed=%s others %s cores (highest 5 s %s) load %.2f -> %.2f kernel=%d '
+    result['summary'] = ('%s %s exit=%s valid=%s disturbed=%s others %s cores (highest 5 s %s) load %.2f -> %.2f kernel=%s '
                          'fps=%s mean=%s ms readbacks/frame=%s wait/frame=%s ms%s' % (
                              commit[:8], result['label'], code, result['valid'], result['disturbed'],
                              f('others_cores_window', '%.2f', result), f('others_cores_peak', '%.2f', result),
-                             result['load_before'], result['load_after'], result['kernel_errors'], f('fps', '%.2f'),
+                             result['load_before'], result['load_after'],
+                             result['kernel_errors'] if result['kernel_errors'] is not None else 'unknown', f('fps', '%.2f'),
                              f('mean_ms', '%.3f'), f('readbacks_per_frame', '%.2f'), f('readback_wait_ms_per_frame', '%.3f'),
                              ' PROBLEM: ' + result['problem'] if 'problem' in result else ''))
     (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

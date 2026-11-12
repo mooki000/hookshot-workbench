@@ -42,8 +42,8 @@
 # written to the user's ~/.local/share, ~/.cache or ~/.config. Pictures every RX_VK_SHOT_EVERY presents (300) at
 # 1280x720 into runs/<tag>/shots, the log into runs/<tag>/hookshot_log.txt, and every game present's time into
 # runs/<tag>/present.csv (HOS_PRESENT_TRACE, host/nn_vi.c: the game's own presents, frame limiter included, CPU
-# clock). RX_VK_FRAME_LOG (runs/<tag>/frames.csv) is set too, but the renderer writes it only when it presents to a
-# swapchain (gpu/vk/vk_replay.cpp present_out): a headless run has none, so the statistics come from present.csv.
+# clock). A populated RX_VK_FRAME_LOG (runs/<tag>/frames.csv) supplies renderer intervals: headless-renderer after
+# offscreen submission, or swapchain with --window. Otherwise present.csv supplies game intervals (three or seven columns).
 #
 # With --window (the user's word of 2026-11-11, for exactly this): inside the gate, right before the game starts,
 # hs-window.py finds the one live Hyprland and sends it two window rules for the class hookshot-harness (never
@@ -71,9 +71,10 @@
 #   exit, wall seconds, span (seconds from the first present to the last), frames (and their source), mean fps and 1%
 #   low fps (1000 / the mean of the slowest 1% frame times), frames over 16.7, 20 and 25 ms (at the 60 cap the game's
 #   intervals scatter around 16.67 ms, so over16.7 counts about half of them; over20 is the dropped-frame count), pictures (count, size of one,
-#   MB), FATAL, CRASH, device-lost and "ran without a core" lines in the log, the kernel's driver lines since the start
-#   (kernel=: kmemsysDoCacheOp|NVRM: Xid, or with --intel i915/xe hangs; must be 0; nvrm=: every NVRM line), the
-#   device the game chose, load average before and after.
+#   MB), FATAL, CRASH, device-lost and "ran without a core" lines in the log, driver lines from start through end
+#   (kernel=: faults/unknown signatures, or Intel hang/reset/error lines; nvrm=: every NVRM line, repeats included),
+#   device and load average before/after. journal=complete|unknown records coverage; failed/partial reads print
+#   kernel=unknown nvrm=unknown, with the journal receipt in kernel-status.json and retained lines in kernel.txt.
 set -uo pipefail
 H=/home/mooki/Games/.hookshot-harness
 NV_ICD=/usr/share/vulkan/icd.d/nvidia_icd.json
@@ -243,33 +244,33 @@ if [ ! -f "$R/exit.txt" ]; then
     echo "hs-run $tag: the gate did not run the game (gate exit $gate, asked $asked)$why" | tee "$R/summary.txt"
     exit "$gate"
 fi
-start=$(cat "$R/start.txt")
-if [ "$intel" = 1 ]; then
-    kernel=$(journalctl -k --since "$start" 2>/dev/null | grep -c -E -i '(i915|xe ).*(hang|reset|error)')
-else
-    kernel=$(journalctl -k --since "$start" 2>/dev/null | grep -c -E 'kmemsysDoCacheOp|NVRM: Xid')
-fi
-nvrm=$(journalctl -k --since "$start" 2>/dev/null | grep -c 'NVRM')
 [ "$keep" = 1 ] || find "$R/user" -mindepth 1 -maxdepth 1 ! -name save -exec rm -rf {} +
 home_writes=""
 for p in "$HOME/.local/share/hookshot" "$HOME/.cache/hookshot-builder"; do [ -e "$p" ] && home_writes="$home_writes $p"; done
-line=$(python3 -I - "$R" "$from" "$tag" "$kernel" "$nvrm" "$home_writes" "$intel" <<'PY'
-import csv, glob, os, re, subprocess, sys
-R, frm, tag, kernel, nvrm, home = sys.argv[1], float(sys.argv[2]), sys.argv[3], int(sys.argv[4]), int(sys.argv[5]), sys.argv[6].strip()
-rd = lambda n: open(os.path.join(R, n)).read().strip()
-ft, span, src = [], 0.0, "-"
-if os.path.exists(os.path.join(R, "frames.csv")):   # (a swapchain's presents: frame, time_s, frametime_ms)
+line=$(python3 -I -B - "$R" "$from" "$tag" "$home_writes" "$intel" "$H/regress/run_case.py" <<'PY'
+import csv, glob, importlib.util, json, os, re, subprocess, sys
+R, frm, tag, home = sys.argv[1], float(sys.argv[2]), sys.argv[3], sys.argv[4].strip()
+def rd(name):
+    with open(os.path.join(R, name)) as f:
+        return f.read().strip()
+spec = importlib.util.spec_from_file_location("hs_run_kernel", sys.argv[6])
+kernel_reader = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(kernel_reader)
+kernel_text, kernel_info = kernel_reader.kernel_lines(rd("start.txt"), rd("end.txt"), sys.argv[5] == "1")
+with open(os.path.join(R, "kernel.txt"), "w") as f:
+    f.write(kernel_text)
+ft, span, src, rows = [], 0.0, "-", []
+if os.path.exists(os.path.join(R, "frames.csv")):
     with open(os.path.join(R, "frames.csv")) as f:
         rows = [(float(r[1]), float(r[2])) for r in list(csv.reader(f))[1:] if len(r) == 3]
-    src = "swapchain"
-elif os.path.exists(os.path.join(R, "present.csv")):   # (the game's presents: frame, return_ns, interval_ns, ...)
-    with open(os.path.join(R, "present.csv")) as f:
-        raw = [r for r in list(csv.reader(f))[1:] if len(r) == 7]
+    if rows:
+        src = "swapchain" if os.path.exists(os.path.join(R, "window")) else "headless-renderer"
+if not rows and os.path.exists(os.path.join(R, "present.csv")):
+    raw = kernel_reader.present_rows(os.path.join(R, "present.csv"))
     t0 = int(raw[0][1]) if raw else 0
     rows = [((int(r[1]) - t0) / 1e9, int(r[2]) / 1e6) for r in raw]
-    src = "game"
-else:
-    rows = []
+    if rows:
+        src = "game"
 span = rows[-1][0] if rows else 0.0
 ft = [ms for t, ms in rows if t >= frm][1:]   # (the first frame of the window has no frame before it inside the window)
 if ft:
@@ -288,14 +289,23 @@ if shots:
     except OSError:
         size = "?"
 mb = sum(os.path.getsize(p) for p in shots) / 1e6
-log = open(os.path.join(R, "hookshot_log.txt"), errors="replace").read()
+with open(os.path.join(R, "hookshot_log.txt"), errors="replace") as f:
+    log = f.read()
 fatal = len(re.findall(r"FATAL", log))
 lost = len(re.findall(r"(?i)device lost|VK_ERROR_DEVICE_LOST", log))
 crash = len(re.findall(r"CRASH:", log))
+failed = bool(fatal or crash or lost or rd("exit.txt") not in ("0", "124", "143"))
+if failed and kernel_info["kernel_errors"] is not None and 0 < kernel_info["no_memory_events"] <= 3:
+    kernel_info["kernel_errors"] += kernel_info["no_memory_lines"]
+with open(os.path.join(R, "kernel-status.json"), "w") as f:
+    json.dump(kernel_info, f, indent=2)
+    f.write("\n")
+kernel = kernel_info["kernel_errors"] if kernel_info["kernel_errors"] is not None else "unknown"
+nvrm = kernel_info["nvrm_lines"] if kernel_info["nvrm_lines"] is not None else "unknown"
 nocore = len(re.findall(r"ran without a core", log))
 devs = re.findall(r"vk: device (\d+): ([^,]+),", log)
 dev = "/".join("%s:%s" % d for d in devs) or "-"
-want = "Intel" if sys.argv[7] == "1" else "4090"
+want = "Intel" if sys.argv[5] == "1" else "4090"
 gpu_ok = "" if devs and all(want in d[1] for d in devs) else " DEVICE?"
 win = ""
 if os.path.exists(os.path.join(R, "window")):   # (a windowed run: the swapchain, the game's own rate, hs-window.py's line)
@@ -303,20 +313,19 @@ if os.path.exists(os.path.join(R, "window")):   # (a windowed run: the swapchain
     win = " swapchain=%s" % ("%s,%s,vsync-%s,x%d" % (*made[-1], len(made)) if made else "NONE")
     game = "-"
     if src == "swapchain" and os.path.exists(os.path.join(R, "present.csv")):
-        with open(os.path.join(R, "present.csv")) as f:
-            raw = [r for r in list(csv.reader(f))[1:] if len(r) == 7]
+        raw = kernel_reader.present_rows(os.path.join(R, "present.csv"))
         last = int(raw[-1][1]) if raw else 0
         g = [int(r[2]) / 1e6 for r in raw if (last - int(r[1])) / 1e9 <= span - frm][1:]
         if g:
             game = "%.1f" % (1000.0 * len(g) / sum(g))
     win += " game=%s " % game
     win += rd("window.txt") if os.path.exists(os.path.join(R, "window.txt")) else "window=UNWATCHED"
-print("hs-run %s exit=%s wall=%ss span=%.1fs from=%gs %s shots=%d %s %.1fMB fatal=%d crash=%d devlost=%d nocore=%d kernel=%d nvrm=%d dev=%s%s%s load %s -> %s%s"
+print("hs-run %s exit=%s wall=%ss span=%.1fs from=%gs %s shots=%d %s %.1fMB fatal=%d crash=%d devlost=%d nocore=%d kernel=%s nvrm=%s dev=%s%s%s load %s -> %s%s journal=%s"
       % (tag, rd("exit.txt"), rd("wall.txt"), span, frm, stats, len(shots), size, mb, fatal, crash, lost, nocore, kernel, nvrm,
          dev.replace(" ", "_"), gpu_ok, win, rd("load-before.txt"), rd("load-after.txt"),
-         (" HOME-WRITES:" + home) if home else ""))
+         (" HOME-WRITES:" + home) if home else "", kernel_info["kernel_status"]))
 PY
-)
+) || exit 1
 echo "$line" | tee "$R/summary.txt"
 echo "$(cat "$R/start.txt") $line" >> "$H/runs.log"
 exit 0

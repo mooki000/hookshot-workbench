@@ -55,6 +55,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 /** A page function called with plain values (the tab's evaluate takes one expression) */
 const call = (fn, ...args) => `(${fn.toString()})(${args.map(a => JSON.stringify(a)).join(', ')})`;
 
+/** A delivery candidate must be a new message identified as ours, not another sender's matching opening. */
+export function postedMessage(rows, before, opening) {
+  return rows.find(m => m.mine === true && !before.includes(m.id) && /^\d+$/.test(m.id) && norm(m.text).startsWith(opening));
+}
+
 export async function connect(browser) {
   const c = config();
   let tab = null;
@@ -130,7 +135,7 @@ export async function connect(browser) {
     const first = norm(text).replace(/<(https?:\/\/[^>\s]+)>/g, '$1').split('\n')[0].slice(0, 60);
     for (let i = 0; i < 40; i++) {
       await sleep(500);
-      const mine = (await read(8)).find(m => !before.includes(m.id) && /^\d+$/.test(m.id) && norm(m.text).startsWith(first));
+      const mine = postedMessage(await read(8), before, first);
       if (mine) return { id: mine.id, time: mine.time, url: `${c.channel}/${mine.id}` };
     }
     const left = await tab.evaluate(call(sel => document.querySelector(sel).innerText, BOX));

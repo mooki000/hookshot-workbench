@@ -58,8 +58,10 @@ run_url=$(gh pr checks "$number" --repo "$fork" 2>/dev/null | awk -F'\t' '$1 ~ /
 [ -n "$run_url" ] && echo "run: $run_url"
 windows=$(grep -E $'\tPython source checks \\(windows' <<< "$table" || true)
 status=0
-if [ -z "$windows" ] || grep -q -v -E '^pass' <<< "$windows"; then status=1
-elif grep -q -E '^fail' <<< "$table"; then status=2
+if [ "$(printf '%s\n' "$windows" | sort)" != "$(printf 'pass\tPython source checks (windows-2022, part 1/2)\npass\tPython source checks (windows-2022, part 2/2)\n')" ]; then
+    status=1
+elif grep -q -v -E $'^(pass|skipping)\t' <<< "$table"; then
+    status=2
 fi
 if [ "$keep" = 0 ]; then
     gh pr close "$number" --repo "$fork" --delete-branch \

@@ -3,6 +3,7 @@
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -14,7 +15,8 @@ HERE = Path(__file__).resolve().parent
 
 
 def load(name):
-    spec = importlib.util.spec_from_file_location(name, HERE / (name + '.py'))
+    source = Path(os.environ.get('REGRESS_TEST_' + name.upper(), HERE / (name + '.py')))
+    spec = importlib.util.spec_from_file_location(name, source)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     return module
 
@@ -177,6 +179,18 @@ class Decisions(unittest.TestCase):
             h.holds = 0; h.args.max_wall_seconds = -1
             with self.assertRaisesRegex(RuntimeError, 'wall-time'): h.budget()
 
+    def test_unknown_kernel_coverage_stops_without_retry(self):
+        with tempfile.TemporaryDirectory() as td:
+            h = self.hunt(td, [{'commit': str(i), 'lift_key': 'same'} for i in range(2)])
+            def missing_coverage(*args, **kwargs):
+                r.save(Path(td) / f'hold-{h.holds:02d}.runs.json', [
+                    {'role': 'reference', 'commit': '0', 'result': result(10, valid=False,
+                     disturbed=True, kernel_errors=None, kernel_status='unknown')}])
+            with patch.object(r, 'run_command', side_effect=missing_coverage), patch.object(r, 'date', return_value='test'):
+                with self.assertRaisesRegex(RuntimeError, 'unknown kernel coverage'):
+                    h.compare('coverage', {'copy': td, 'commit': '0'}, {'copy': td, 'commit': '1'}, 'good')
+            self.assertEqual(h.holds, 1)
+
 
 ADAPTER = '''import json, sys
 out, scenario, copy, commit, seconds = sys.argv[1:6]
@@ -313,11 +327,12 @@ class AdapterLogic(unittest.TestCase):
         """The adapter end to end without a game or a gate: a wrapper that leaves what hs-run.sh's inner half leaves, and a
         sleeping stand-in for the game, so the samples, the quiet measure and the result file are the real code's."""
         import os, shutil, textwrap
-        if not shutil.which('journalctl') or not shutil.which('sleep'):
-            self.skipTest('needs journalctl and sleep')
+        if not shutil.which('sleep'):
+            self.skipTest('needs sleep')
         with tempfile.TemporaryDirectory() as td:
             td = Path(td).resolve(); copy = td / '.hookshot-h-standin'; copy.mkdir()
             shutil.copy(shutil.which('sleep'), copy / 'hookshot')
+            (copy / 'regress-source.txt').write_text('0000\n')
             wrapper = td / 'wrapper.py'
             wrapper.write_text('#!' + sys.executable + '\n' + textwrap.dedent('''\
                 import subprocess, sys, time
@@ -341,7 +356,9 @@ class AdapterLogic(unittest.TestCase):
                         'run': {'label': 'standin', 'anchor': 'first', 'from': 1, 'to': 8, 'sample_seconds': 0.5,
                                 'readback_csv': False, 'wrapper': str(wrapper), 'device_pattern': 'Stand-in GPU',
                                 'expect_log': ['source 0000'], 'forbid_log': ['never there']}}
-            with patch.object(runner, 'GATE_MARK', 'PATH'):   # (the gate's mark is not set for a test: any set variable stands in)
+            with patch.object(runner, 'GATE_MARK', 'PATH'), patch.object(runner, 'kernel_lines', return_value=(
+                    '', {'kernel_errors': 0, 'memmap_lines': 0, 'no_memory_lines': 0, 'no_memory_events': 0,
+                         'kernel_status': 'complete'})):
                 got = runner.run_case(copy, td / 'run', scenario, 9, 'c0ffee00')
             saved = json.loads((td / 'run' / 'result.json').read_text())
             self.assertTrue(got['valid'], got.get('problem'))
@@ -361,7 +378,7 @@ class AdapterLogic(unittest.TestCase):
         log = '[hos host] hookshot v2.1.0-rc.3-190-g7331f886-dirty (source abcd1234)\n'
         self.assertTrue(runner.stamp_in_log(log, 'abcd1234'))
         self.assertFalse(runner.stamp_in_log(log, 'ffff0000'))   # (another build's binary ran)
-        self.assertTrue(runner.stamp_in_log(log, ''))            # (a copy without the file: the scenario's own lines decide)
+        self.assertFalse(runner.stamp_in_log(log, ''))           # absent provenance is not a successful identity check
 
     def test_a_run_is_started_later_to_miss_a_periodic_disturbance(self):
         quarter = [{'every': 900, 'at': 536, 'for': 9}]   # (a job at 8:56 past each quarter hour, 9 s long)
@@ -478,6 +495,169 @@ class AdapterLogic(unittest.TestCase):
             (copy / 'mods').rmdir(); (copy / 'hookshot_options.ini').write_text('dlss=2\n')
             with self.assertRaisesRegex(AssertionError, 'options'):
                 runner.setup(copy, Path(td) / 'run3', {}, 90)
+
+
+class AdapterSafety(unittest.TestCase):
+    def journal(self, text='', code=0, stderr='', intel=False):
+        with patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess([], code, text, stderr)):
+            return runner.kernel_lines('begin', 'end', intel)
+
+    def test_failed_journal_is_unknown(self):
+        for code, stderr in ((1, 'permission denied'), (0, 'journal coverage is incomplete')):
+            with self.subTest(code=code):
+                _, counts = self.journal(code=code, stderr=stderr)
+                self.assertIsNone(counts['kernel_errors'])
+                self.assertEqual(counts['kernel_status'], 'unknown')
+                self.assertEqual(counts['journal_exit'], code)
+                self.assertEqual(counts['journal_stderr'], stderr)
+
+    def test_missing_journal_executable_is_unknown(self):
+        with patch.object(runner.subprocess, 'run', side_effect=FileNotFoundError('journalctl')):
+            _, counts = runner.kernel_lines('begin', 'end')
+        self.assertIsNone(counts['kernel_errors'])
+        self.assertEqual(counts['kernel_status'], 'unknown')
+
+    def test_unknown_allocation_line_is_a_fault(self):
+        _, counts = self.journal('NVRM: NV_ERR_NO_MEMORY unexpected-location\n')
+        self.assertEqual(counts['kernel_errors'], 1)
+        self.assertEqual(counts['no_memory_events'], 0)
+
+    def test_only_complete_same_second_allocation_triples_are_known(self):
+        prefix = '2026-11-12T10:00:00+0000 fixture kernel: NVRM: '
+        lines = [prefix + 'NV_ERR_NO_MEMORY _memdescAllocInternal @ mem_desc.c:1',
+                 prefix + 'rmStatus @ system_mem.c:2',
+                 prefix + 'pRmApi->Alloc(x) @ nv_gpu_ops.c:3']
+        _, counts = self.journal('\n'.join(lines) + '\n')
+        self.assertEqual((counts['kernel_errors'], counts['no_memory_lines'], counts['no_memory_events']), (0, 3, 1))
+        for broken in (lines[:1], [lines[0].replace('mem_desc.c', 'mem_descXc'), *lines[1:]],
+                       [*lines[:2], lines[2].replace('10:00:00', '10:00:01')]):
+            _, counts = self.journal('\n'.join(broken) + '\n')
+            self.assertGreater(counts['kernel_errors'], 0)
+        _, counts = self.journal('\n'.join(lines * 4) + '\n')
+        self.assertEqual(counts['no_memory_events'], 4)
+        self.assertEqual(counts['kernel_errors'], 12)
+
+    def test_repeats_inherit_only_the_preceding_driver_line(self):
+        mapping = 'NVRM: memMap_IMPL: CPU mapping not supported for addressSpace: 0x1\n'
+        retained, counts = self.journal(mapping + 'last print repeated 4 times\n')
+        self.assertEqual(counts['memmap_lines'], 5)
+        self.assertEqual(counts['nvrm_lines'], 5)
+        _, counts = self.journal('last print repeated 4 times\n')
+        self.assertGreater(counts['kernel_errors'], 0)
+        self.assertIn('last print repeated 4 times', retained)
+        _, counts = self.journal(mapping + 'unrelated message\nlast message repeated 9 times\n')
+        self.assertEqual((counts['memmap_lines'], counts['kernel_errors']), (1, 0))
+        _, counts = self.journal('NVRM: Xid 1\nlast print repeated 2 times\n')
+        self.assertEqual(counts['kernel_errors'], 3)
+        _, counts = self.journal('i915 GPU hang\nlast message repeated 2 times\n', intel=True)
+        self.assertEqual(counts['kernel_errors'], 3)
+
+    def fake_case(self, metric='absent_metric', direction='higher-worse', stamp='fixture', kernel_events=0):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); copy = root / '.hookshot-h-fake'; copy.mkdir()
+            (copy / 'hookshot').touch()
+            if stamp is not None:
+                (copy / 'regress-source.txt').write_text(stamp)
+            out = root / 'run'
+            def start(*args, **kwargs):
+                for name, content in {'exit.txt': '124', 'wall.txt': '1', 'load-before.txt': '0 0 0',
+                        'load-after.txt': '0 0 0', 'hookshot_log.txt':
+                        'hookshot v0 (source fixture)\nvk: device 0: NVIDIA GeForce RTX 4090, fake\n'}.items():
+                    (out / name).write_text(content)
+                return SimpleNamespace(poll=lambda: 0, returncode=0)
+            kernel = {'kernel_errors': 0, 'memmap_lines': 0, 'no_memory_lines': 3 * kernel_events,
+                      'no_memory_events': kernel_events, 'kernel_status': 'complete'}
+            scenario = {'kind': 'game-check', 'measure': {'name': metric, 'direction': direction}, 'run': {}}
+            with patch.object(runner, 'GATE_MARK', 'PATH'), patch.object(runner.subprocess, 'Popen', side_effect=start), \
+                 patch.object(runner, 'date', return_value='2026-11-12T10:00:00'), \
+                 patch.object(runner, 'kernel_lines', return_value=('', kernel)), \
+                 patch.object(runner, 'analyse', return_value=({'mean_ms': 10.0}, [])), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                return runner.run_case(copy, out, scenario, 1, 'fake')
+
+    def test_missing_numeric_metric_is_invalid_not_zero(self):
+        result = self.fake_case()
+        self.assertFalse(result['valid'])
+        self.assertIsNone(result['value'])
+        self.assertIn('absent_metric', result['problem'])
+        self.assertEqual(result['measures'], {'mean_ms': 10.0})
+
+    def test_pass_fail_does_not_require_a_numeric_metric(self):
+        result = self.fake_case(direction='pass-fail')
+        self.assertTrue(result['valid'], result.get('problem'))
+        self.assertIs(result['value'], True)
+
+    def test_missing_source_stamp_is_invalid(self):
+        result = self.fake_case(metric='mean_ms', stamp=None)
+        self.assertFalse(result['valid'])
+        self.assertIn('source stamp', result['problem'])
+
+    def test_allocation_exception_requires_a_successful_run(self):
+        good = self.fake_case(metric='mean_ms', kernel_events=1)
+        self.assertTrue(good['valid'])
+        self.assertEqual(good['kernel_errors'], 0)
+        failed = self.fake_case(kernel_events=1)
+        self.assertFalse(failed['valid'])
+        self.assertEqual(failed['kernel_errors'], 3)
+
+
+class SummarySafety(unittest.TestCase):
+    def summary(self, *, frames=None, columns=7, window=False, journal_code=0, journal_text='', game_exit='124'):
+        import contextlib
+        import io
+        default = HERE.parent / 'hs-run.sh'
+        if not default.exists():
+            default = HERE.parent / 'harness/hs-run.sh'
+        source = Path(os.environ.get('HS_RUN_TEST_SCRIPT', default)).read_text()
+        code = source.split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            files = {'exit.txt': game_exit, 'wall.txt': '1', 'load-before.txt': '0 0 0', 'load-after.txt': '0 0 0',
+                     'start.txt': '2026-11-12 10:00:00', 'end.txt': '2026-11-12 10:00:01',
+                     'hookshot_log.txt': 'vk: device 0: NVIDIA GeForce RTX 4090, fake\n'}
+            for name, text in files.items():
+                (root / name).write_text(text)
+            if window:
+                (root / 'window').touch()
+            if frames is not None:
+                (root / 'frames.csv').write_text('frame,time_s,frametime_ms\n' + frames)
+            suffix = ',0,0,0,0' if columns == 7 else ''
+            (root / 'present.csv').write_text('frame,return_ns,interval_ns' + suffix + '\n' +
+                ''.join(f'{i+1},{1000000000+i*10000000},10000000{suffix}\n' for i in range(3)))
+            output = io.StringIO()
+            argv = (['summary', str(root), '0', 'fake', '', '0', str(runner.__file__)] if 'kernel_reader =' in code else
+                    ['summary', str(root), '0', 'fake', '0', '0', '', '0'])
+            receipt = subprocess.CompletedProcess([], journal_code, journal_text, 'permission denied' if journal_code else '')
+            with patch.object(sys, 'argv', argv), patch.object(subprocess, 'run', return_value=receipt), \
+                 contextlib.redirect_stdout(output):
+                exec(compile(code, 'hs-run-summary', 'exec'), {})
+            return output.getvalue()
+
+    def test_empty_renderer_falls_back_to_present(self):
+        self.assertIn('frames=2(game)', self.summary(frames=''))
+
+    def test_three_column_present_trace_is_not_empty(self):
+        self.assertIn('frames=2(game)', self.summary(columns=3))
+
+    def test_headless_clock_is_named_without_changing_window_clock(self):
+        rows = '1,0,10\n2,0.01,10\n3,0.02,10\n'
+        self.assertIn('frames=2(headless-renderer)', self.summary(frames=rows))
+        self.assertIn('frames=2(swapchain)', self.summary(frames=rows, window=True))
+
+    def test_summary_journal_failure_is_unknown(self):
+        summary = self.summary(journal_code=1)
+        self.assertIn('kernel=unknown nvrm=unknown', summary)
+        self.assertIn('journal=unknown', summary)
+
+    def test_failed_game_cannot_use_allocation_exception(self):
+        prefix = '2026-11-12T10:00:00+0000 fixture kernel: NVRM: '
+        text = '\n'.join(prefix + line for line in ('NV_ERR_NO_MEMORY _memdescAllocInternal @ mem_desc.c:1',
+                         'rmStatus @ system_mem.c:2', 'pRmApi->Alloc(x) @ nv_gpu_ops.c:3')) + '\n'
+        self.assertIn('kernel=0 nvrm=3', self.summary(journal_text=text))
+        self.assertIn('kernel=3 nvrm=3', self.summary(journal_text=text, game_exit='7'))
 
 
 if __name__ == '__main__':

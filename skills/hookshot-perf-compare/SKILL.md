@@ -1,99 +1,127 @@
 ---
 name: hookshot-perf-compare
 description: >
-  Compare Hookshot builds or settings for fps, frame times, 1% low and stutter;
-  distinguish those measurements from ordinary memory/log/image runs. Read
-  hookshot-workbench first. Use the shared regression tool, never a second timing runner.
+  Compare Hookshot builds or settings for frame time, fps, 1% low and stutter. Distinguish ordinary memory/log/image
+  observations from authorized exclusive timing. Read hookshot-workbench and hookshot-regression-hunt; use the shared
+  regression worker and registered evidence adapters, never a second timing runner.
 ---
 
 # Comparing Hookshot builds or settings
 
-**Use for:** every speed claim, regression comparison or “is this switch/PR faster?”. Read
-`hookshot-workbench` and `hookshot-regression-hunt`. Three frequent commands, using
-`P=/home/mooki/Code/hookshot-wt/deps/python/bin/python3` and
-`H=/home/mooki/Games/.hookshot-harness`:
+**Use for:** every speed claim or “is this switch/PR faster?”. Read `hookshot-workbench`, `hookshot-regression-hunt`
+and the current agent brief. All runs are windowless; swapchain, V-Sync, display latency and generated-frame output
+remain untested without a new explicit grant. Reports name skills, tools, sources and actual verification.
 
 ```sh
-"$P" -I -B "$H/regress/regress.py" plan --repo <repo> --good <sha> --bad <sha> --output <new-dir>
-"$P" -I -B "$H/regress/regress.py" hunt --repo <repo> --good <sha> --bad <sha> --scenario <local.json> --output <new-dir> --max-holds <authorized-count> --exclusive-authorized
-"$H/hs-idle.sh" "$P" -I -B "$H/regress/test_regress.py"
+H="$HOME/Games/.hookshot-harness"
+P="$HOME/Code/hookshot-wt/deps/python/bin/python3"
 ```
 
-The second command is allowed only after Main authorizes those exclusive holds. For a
-multi-arm comparison use the same tool's `_hold` plans, as the regression skill describes.
-Old `PerfLinux-files/pq.sh`, `ab-hold2.sh` and their tables are historical evidence readers,
-not the runner for new measurements. **No windowed run is authorized on 2026-11-12.**
+## 1. Pin a question and plan without running a game
 
-## Before spending a hold
+1. Read the whole current thread, description and posted-work record. A moved head may be parked, not a request
+   for testing. A repeat of an established result is not a new finding.
+2. Pin both commits, binary hashes, source stamps, release/profile identity, settings and cache state. A switch
+   comparison on one build is not an old/new build comparison. Use owned copies without mods or hidden options.
+3. Keep the same local save, input, scene, cap, output size and upscaler. Keep game data in local scenario files.
+   `HOS_FPS_MAX` accepts 61–1000 in the selected base; 1000 is its Uncapped value, not a promise of achieved speed.
+   Verify the selected build's accepted range before changing it.
+4. Plan with a **new** output directory; this reads Git and writes the plan, but starts no game or build:
 
-- Read the whole issue/PR thread, current description and `reports/POSTED.md`. A changed
-  head is not a request to test: an author may have parked it. A repeat is not a new finding.
-- Pin both commits, binaries, profiles, source stamps and cache state. A setting comparison
-  on one build is not an old/new build comparison. Use owned copies, no mods or hidden options.
-- Choose the same local save, input, scene, cap, output size and upscaler. Warm each scene/mode
-  once without measuring. Paths, routes and game data stay in local scenario files.
-- `HOS_FPS_MAX=240` in old reports was their high-cap setting, not today's maximum:
-  main 51da0464 accepts 61–1000; Uncapped is 1000. Preserve the chosen cap on both arms.
-- The frame-clock input script counts 60 presents per script second, not wall seconds.
-  Verify loading/scene/control in state and inspected pictures, not a guessed delay.
+   ```sh
+   "$P" -I -B "$H/regress/regress.py" plan --repo "$REPO" --good "$GOOD" --bad "$BAD" --output "$PLAN_OUT"
+   ```
 
-## What counts as a timing
+   Inspect `range.json`. `distinct_lifts` is conservative compatibility grouping, not a count of required builds.
+   For several switches or scenes use the regression skill's explicit `_hold` plan, not a new runner.
+5. Check the timing scenario before requesting a hold. It needs `schema_version:1`, `kind:"timing"`, explicit
+   build/run argv lists and a decision measure. Quiet defaults are mean other-work **below 3 cores**, peak other-work
+   **at most 6 cores** over five-second samples, and same-arm repeat spread at most 5%. Load average is context,
+   not the quiet test. Set the decision bands before collecting results.
 
-A B A B in one exclusive hold, with the shared adapter's validity and quiet checks:
-non-game work under three cores on average, no five-second sample over six cores, each
-arm's repeats within 5%. Load averages are recorded context, not the quiet test. Paired
-ranges and the shared classifier decide whether the gap clears repeat spread. Mean
-uncapped frame time is steadier than 1% low; hitches need multiple windows and their counts.
+Game-free reader check:
 
-Never quote a rate from an ordinary shared run, even as an aside: last night's one-run
-“window penalty” disappeared in the quiet pair. Keep rejected rows and reasons. The tool
-must retain actual queue time and occupancy separately. One waiter, at most eight minutes
-per hold, no priority unless explicitly granted. Never withdraw and re-ask a queued cycle.
-Never nest the GPU exclusive gate inside the Intel gate: that deadlocks the quiet lock.
+```sh
+"$H/hs-nocore.sh" "$P" -I -B "$H/regress/test_regress.py"
+```
 
-A periodic desktop job is not ours to stop. The regression plan's `window` and `avoid`
-fields can place measurement windows between observed disturbances. Do not run analysis
-or another job of your own beside your exclusive hold.
+It tests synthetic histories, held workers and fake adapters. It does not warm a scene or establish a hardware result.
 
-## Clocks and parser meanings
+## 2. Take only the authorized paired hold
 
-- `RX_VK_FRAME_LOG` is the three-column timing CSV. Since #2354 it works headless:
-  CPU intervals after submitting the offscreen copy, without swapchain/display waits.
-- `HOS_PRESENT_TRACE` is the game's own present clock (older three-column or newer
-  seven-column form), limiter included. It is not GPU completion or scan-out.
-- `RX_VK_FRAMELOG` (no underscore) is the pixel stream, still swapchain-only. A headless
-  run with still screenshots is not a continuous flash proof. Never confuse the two names.
-- With a window, frame-log numbers count swapchain/startup/made presents, not game
-  presents. The shared adapter aligns the files at their ends; raw frame numbers are not
-  interchangeable. No window versus headless claim from mismatched instruments.
-- `hs-run.sh` currently labels any populated `frames.csv` as “swapchain”; on headless
-  runs that historical label is wrong. Read `env-used.txt` and the actual clock. Its staged
-  correction must not replace the wrapper while a live/queued job uses it.
-- At the 60 cap, `over16.7` includes pacing jitter; show `over20`, `over25`, `over33`,
-  p99 and the longest frame, plus the window length and rejected segments.
-- Readback “waited” averages describe a changing subset. #2602 adds last-part/settled
-  outcomes without changing the old prefix. Use identically instrumented all-call counts
-  on both builds for a per-frame cost; do not compare unlike conditional averages.
+1. Warm each scene/mode once without measuring, through ordinary bounded gated runs. Preserve the resulting cache
+   state on both arms. Frame-clock input counts 60 game presents per script second, not wall time; verify loading,
+   control and scene in fresh state and inspected pictures rather than a fixed delay.
+2. Obtain the main session's authorization for the **named count of exclusive holds**. Only then:
 
-## Counts, memory and profiles
+   ```sh
+   unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKTOP HSGATE_IN_GATE HSGATE_IN_INTEL_GATE
+   "$P" -I -B "$H/regress/regress.py" hunt --repo "$REPO" --good "$GOOD" --bad "$BAD" \
+     --scenario "$SCENARIO" --output "$HUNT_OUT" --max-holds "$HOLDS" --exclusive-authorized
+   ```
 
-Ordinary gated runs can establish counts, images, start/finish and memory observations;
-label them **ordinary run, no speed claim**. Short startup RSS slopes do not prove a leak.
-Linux `private` is RssAnon, not Windows private commit. Device-wide memory is not the
-process's own allocation. A memory experiment does not need exclusive GPU time.
+   `HUNT_OUT` must be new and distinct from `PLAN_OUT`. The scenario and budgets are operator-owned. Do not add
+   `--priority-authorized` without a separate grant. Do not raise a budget to rescue an inconclusive result.
+3. Keep reference/candidate/reference/candidate in one exclusive hold. The maximum is 480 seconds including the
+   worker's reserve, shutdown and settling. The fit check is
+   `2 * repetitions * (seconds + grace_seconds) + 10 <= max_hold_seconds`; the default grace is 25 seconds.
+   Do not describe the planned duration as actual queue or occupancy time; preserve both receipts separately.
+4. Keep one waiter, never withdraw/requeue to jump it, and do no analysis or other work beside your own timing hold.
+   Never nest the GPU exclusive gate inside the Intel gate. A periodic desktop job is not ours to stop: a reviewed
+   plan's `window` and `avoid` fields can avoid an observed disturbance without changing the desktop.
+5. Retain every invalid/disturbed row. Require the adapter's validity/quiet verdict and both same-arm repeats within
+   tolerance. A successful input, normal wrapper exit or low load average is not timing validity.
 
-Kernel policy is the brief's signature rule: stop on Xid, kmemsysDoCacheOp and unknown
-NVRM lines, not merely on a count greater than one. Known mapping refusals and the bounded
-allocation-refusal exception are counted, including repeated-message markers.
+Ordinary gated runs establish counts, pictures, start/finish and memory observations only. Label them **ordinary run,
+no speed claim**; do not quote their printed frame rate even as an aside. A memory experiment does not need exclusive
+GPU time. The current numeric `hunt` classifier nevertheless requires timing mode; use ordinary collection without
+that classifier, not an unnecessary exclusive hold.
 
-Profilers have been run (historical evidence: `reports/PerfLinux.md` section 8.3); the old
-“q-prof not run” instruction is obsolete. Keep stock outputs. On main 51da0464,
-`scripts/prof.py:37-65` retains argument lists in demangled names but `waiting()` tests
-suffixes without them; `scripts/vkprof.py:34` misses `libnvidia-eglcore`. Until repaired,
-label local normalization/classification and retain raw stacks; do not treat its waiting
-or NVIDIA share as established without checking those names. These source issues are
-reported by the performance survey, not a speed result from this skill update.
+## 3. Analyse the same clock and report the paired result
 
-The newer `scripts/cpu_report.py` is Windows-only and rejects Linux captures. Linux uses the matching-copy ELF
-symbols with `scripts/crit.py`/`vkprof.py` or the retained `PerfLinux-files/threadprof.py` reader, with the caveats above.
-Every report names the skills read, tools used, pinned sources and actual verification.
+- `RX_VK_FRAME_LOG` is the three-column renderer timing CSV. Headless values are CPU intervals after the offscreen
+  copy submission, without swapchain/display waits. `HOS_PRESENT_TRACE` is the game's present clock with its limiter;
+  its three- and seven-column forms are not GPU completion or scan-out.
+- `RX_VK_FRAMELOG` is the separate pixel stream, still swapchain-only. A still screenshot cannot establish absence
+  of a continuous flash. Scan only a real retained capture with eligible consecutive frame triplets; inspect events.
+- `hs-run.sh` uses populated renderer CSV, labelled `headless-renderer` or `swapchain`; empty/missing renderer CSV
+  falls back to three- or seven-column present traces, labelled `game`. Read the raw files for older summaries.
+  `run_case.py` still requires renderer CSV for its scene window.
+- Do not compare windowed and headless instruments, mismatched settings, unmatched scene windows or unlike diagnostic
+  populations. The adapter's windowed frame-number alignment does not make the clocks interchangeable.
+- At a 60 fps cap, `over16.7` includes pacing jitter. The live regression statistics emit mean/median, p99, 1% low,
+  maximum and `over16.7`/`over20`/`over25`; **not `over33`**. Derive any extra threshold from the same retained window
+  and label the analysis, rather than quoting a nonexistent column. Mean uncapped frame time is steadier than 1% low;
+  hitches need repeated windows and their counts. The adapter judges quiet over the selected whole window, not
+  automatic 30-second subsegments.
+- Use the shared paired classifier. Report the gap and same-arm spread, not only averages. A non-overlapping clean
+  result can support a claim; ambiguous, drifted or disturbed pairs cannot. Preserve rejected evidence and reasons.
+- Conditional readback “waited” averages change population when code changes the wait classes. For per-frame cost,
+  instrument all calls the same way on both builds and keep their window/present numbers.
+- Short startup RSS slopes do not prove a leak. Linux `RssAnon` is not Windows private commit, and device-wide GPU
+  memory is not the process's allocation. The live adapter's `rss_parts_mb` uses its final sample, possibly after
+  exit; use the last **live** raw sample for composition, not as the high-water composition.
+- Apply the brief's kernel signature policy, not `nvrm > 0`. Retain `kernel.txt` and the journal exit/stderr receipt.
+  Failed or partial journal reads produce unknown coverage, not zero; the hunt stops instead of retrying it.
+  Repeated markers inherit their preceding message; only the named same-second allocation triple is exempt.
+
+For profiles, preserve raw stacks and matching-copy ELF symbols. `scripts/prof.py` retains argument lists but its
+`waiting()` checks bare suffixes; `scripts/vkprof.py` omits `libnvidia-eglcore`. Label any corrected local classification.
+`scripts/cpu_report.py` rejects Linux captures. Do not quote those readers' uncorrected wait/vendor shares as fact.
+
+## MCP routes
+
+Use the workbench skill's catalogue, configuration and Job-receipt rules. MCP evidence analysis consumes registered
+artifacts; it does not turn an ordinary run into exclusive timing. There is **no regression hunt/held-worker MCP tool**.
+
+| Step | Shell route | MCP tool (group; integration) | What it saves |
+|---|---|---|---|
+| Read current request | `gh pr view --comments` plus current description | `github_thread_read(repository, number)` (knowledge; integrated) | Pinned head/snapshot and explicit pagination; follow every page. |
+| Pin/build arms | `regress.py plan`; approved build adapters | `build_plan(repo_id, commit, profile_id)`, `build_start(plan_id, idempotency_key)` (checks; integrated) | Pinned owned build jobs; no automatic timing authorization. |
+| Observe queue | Gate files and live lock/process checks | `queue_status(device="gpu")` (status; integrated) | Structured queue/hold state without joining it. |
+| Warm/collect ordinary evidence | Bounded `hs-run.sh`; control client | `session_launch(build_id, profile_id, wall_seconds, idempotency_key)`, `session_state(run_id)`, `session_stop(run_id, reason, idempotency_key)` (session; integrated) | Disposable gated lifecycle, not a performance hold. |
+| Run paired timing | Authorized `regress.py hunt` or `_hold` | **None** | Keep the shared shell worker; do not substitute `session_launch`. |
+| Read/analyse retained data | `run_case.py` results and raw trace/sample files | `run_logs(run_id)`, `run_faults(run_id)`, `evidence_analyze(run_id, analyzer_id, arguments, idempotency_key)` (evidence; integrated) | Bounded logs, explicit clocks, registered analyzers and rejection reasons. |
+| Compare two repeats per arm | Shared `paired_decision` / `compare_paired` readers | `evidence_compare(pairing)` (evidence; integrated) | Checks exactly two explicit pairs for settings, clocks, quiet and repeat spread. |
+| Scan/panel existing captures | `scripts/framelog.py`; labelled `panels.sh` | `evidence_scan_frames(capture_artifact_id, idempotency_key)`, `evidence_panels(images, label, idempotency_key)` (evidence; integrated) | Idle-gated scans/panels and artifact provenance; visual review remains. |
+| Find/report previous evidence | Read registered reports and retained results | `knowledge_search(query, collection="reports")`, `workbench://reports/{id}` (knowledge; integrated); `evidence_bundle(request)` (evidence; integrated) | Revision-pinned reads and private drafts from recorded evidence, never publication. |

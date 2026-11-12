@@ -2,8 +2,8 @@
 name: hookshot-issue-triage
 description: >
   Comb Hookshot's issues and pull requests for what this machine can reproduce, test or answer: refresh the survey,
-  score a problem the way the project asks, reproduce it headless, and draft the comment. Use when asked to triage,
-  survey, pick work from, or answer reports on NotRexed/Hookshot.
+  score a problem the way the project asks, reproduce it windowlessly, and draft the comment.
+  Use shell readers or registered workbench MCP readers; never claim or post from a worker.
 ---
 
 # Triage on Hookshot: what this machine can add
@@ -13,53 +13,37 @@ description: >
 ```sh
 gh issue view <n> --repo NotRexed/Hookshot --comments
 gh pr list --repo NotRexed/Hookshot --state all --search "<words>" --json number,title,state,headRefOid
-/home/mooki/Games/.hookshot-harness/hs-pr-ci.sh <pr>...
+/home/mooki/Games/.hookshot-harness/hs-pr-ci.sh <pr>
 ```
 
 Read `reports/POSTED.md` and the **whole** thread, including its latest description, reviews and attachments,
 before spending a run or describing a result as a finding. A repeated known result is a repeat, not new work.
 Reports name skills read and tools used. Public drafts contain no local paths, machine tool names or agent names.
 
-The historical survey found thirteen `[Tracking]` families (#993, #995 to #1006) and feature requests (#1007);
-refresh live state before picking work. `docs/worklist.md` remains the scored list. The new **testing wanted**
-label permits non-collaborator PRs in the opt-in test-request queue; claims also live in Matrix/Discord, so
+Discover current `[Tracking]` families and open/merged PRs before choosing work. `docs/worklist.md` is the scored
+list. The **testing wanted** label permits non-collaborator PRs in the opt-in queue; claims also live in team chat, so
 “nobody claims it on GitHub” does not mean unclaimed. This machine adds **Linux with an RTX 4090
 on NVIDIA's driver** (Tier 1 for the project) and **an Intel UHD 770 on Mesa** (no mesh shaders: the compute fallback).
 Read `skill://hookshot-workbench` for building and running, `skill://hookshot-pr-evidence` before anything is posted.
 
 ## The survey and how to refresh it
 
-`reports/HsSurvey.md` and `reports/HsSurvey-files/` are the **2026-11-10 historical survey**. Its `tables.py`
-contains manually frozen verdicts and an as-of date: refreshing JSON does not refresh those judgements.
-Discover today's `[Tracking]` issues and feature collector from the tracker (newer families include #2502–#2511;
-#2595 is a separate benchmark tracker), rather than treating the old thirteen-family list or merge median as timeless.
-
-The existing `fetch.py` writes a shared script-relative `raw/` and has **no `--out` option**. For a concurrent
-survey reuse it with a task-local destination, as follows; do not overwrite another lane's snapshot:
+Treat `reports/HsSurvey.md` and `reports/HsSurvey-files/` as an archived survey, not today's verdict.
+Its `tables.py` freezes judgements. Its `fetch.py` has no `--out` and creates shared `raw/` during import:
+do not import it merely to redirect output. Use bounded read-only commands and retain outputs in a new task folder.
 
 ```sh
-<pinned-python> -I -B - <new-task-raw-directory> labels <<'PY'
-import importlib.util, os, subprocess, sys
-path = "/home/mooki/Code/hookshot-wt/reports/HsSurvey-files/fetch.py"
-spec = importlib.util.spec_from_file_location("survey_fetch", path)
-fetch = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(fetch)
-fetch.RAW = os.path.abspath(sys.argv[1])
-os.makedirs(fetch.RAW, exist_ok=False)
-sys.argv = [path, *sys.argv[2:]]
-try:
-    fetch.main()
-except subprocess.CalledProcessError as error:
-    print(error.stderr or str(error), file=sys.stderr)
-    raise
-PY
+gh search issues '[Tracking]' --repo NotRexed/Hookshot --match title --limit 100 --json number,title,state
+gh issue list --repo NotRexed/Hookshot --state all --search '<explicit date query>' --limit 100 --json number,title,state,updatedAt
+gh pr list --repo NotRexed/Hookshot --state all --search '<explicit date query>' --limit 100 --json number,title,state,headRefOid
+gh label list --repo NotRexed/Hookshot --limit 500 --json name,description,color
 ```
 
 For a bounded cohort, use `gh issue list --search "<explicit date/state query>"` and a lean PR index
 (`number,title,state,headRefOid`); fetch full bodies/comments/reviews only for selected threads. If the old rich
-PR query fails, retain stderr and switch to lean metadata plus paginated REST (`gh api --paginate --slurp
-repos/NotRexed/Hookshot/issues/<n>/comments?per_page=100`), not a repeated heavyweight query. Do not diagnose
-the unknown failure as a GitHub limit. A result count reaching the requested limit is not a complete inventory:
+PR query fails, retain stderr and switch to lean metadata plus paginated REST
+(`gh api --paginate --slurp 'repos/NotRexed/Hookshot/issues/<n>/comments?per_page=100'`), not another heavyweight query.
+Do not diagnose the unknown failure as a GitHub limit. Reaching the requested limit is not a complete inventory:
 raise the bound or split disjoint date ranges, deduplicate by number, and verify all comment pages. Distinguish
 new openings, updated-only threads and actually new comments. Date your own verdicts; search open **and merged**
 PRs again before a claim.
@@ -68,10 +52,10 @@ PRs again before a claim.
 
 score = severity weight x reach x confidence. Severity: S0 8 (security; crash, hang, device lost, PC freeze; lost
 saves; the builder cannot build), S1 5 (cannot progress or start), S2 3 (wrong but playable; a frame-rate loss over
-20 %), S3 1 (polish, features). Reach: the share of players affected (their `scripts/hardware_report.py` counts the
-issue forms; Linux and SteamOS were 17 % of reports, NVIDIA 35 %). Confidence: 1.0 reproduced with a log, 0.7 two
-reporters with logs, 0.4 one report or no log. Write the three parts in the claim or the comment. A new problem
-becomes a row in `docs/worklist.md` through a pull request.
+20 %), S3 1 (polish, features). Reach is the affected share; refresh `scripts/hardware_report.py` and the current
+installed-base source rather than reusing an old percentage. Confidence: 1.0 reproduced by us or a maintainer with
+a log, 0.7 two or more reporters with logs, 0.4 one report or no log. State the three factors and their dated source.
+A new problem becomes a row in `docs/worklist.md` through a pull request.
 
 ## One report, start to finish
 
@@ -83,11 +67,13 @@ becomes a row in `docs/worklist.md` through a pull request.
    reachable from a save in `/home/mooki/Games/.hookshot-harness/saves/`), or not (Windows only, AMD, HDR, a real pad).
    “Cannot reproduce this hardware symptom” is separate from “can test its portable API/recording contract with
    authored fixtures here”; a fixture proof must not be promoted into an AMD/Windows gameplay claim.
-3. Reproduce headless through the run wrapper at the reporter's settings (their log names version and options); ten
-   runs if intermittent; pictures looked at; the log lines that show it. "Does not reproduce here in N runs at these
-   settings" is a result worth posting when the reporter's hardware is ours.
-4. If someone already has a pull request: build it against its base and test it here; the verdict is one of helps
-   (measured), nothing to show here, breaks, cannot be tested here.
+3. Choose a bounded reproduction and repeat count from the reported failure rate; do not automatically spend ten
+   runs. Use owned save copies and the windowless run wrapper at the reporter's settings. Inspect pictures and retain
+   every failed attempt. Say “does not reproduce in N runs at these settings”, not “fixed”.
+4. If someone has a PR, read its current request and follow `hookshot-pr-loop`. By day (07:00–22:00 local), reserve
+   the card for our PRs/fixes and one requested Linux-test lane; defer unrequested game checks to 22:00–07:00.
+   Main reviews executable changes before any test/build. Carry verified identical-rebase evidence instead of
+   repeating it. Otherwise compare its owned head/base copies: helps, nothing to show here, breaks, or untestable here.
 5. If nobody has: the cause before the fix; hand a fix to its own branch and pull request.
 6. Draft the comment under `/home/mooki/Code/hookshot-wt/reports/drafts/`: what was run (build, settings, driver),
    what was seen, the numbers through a script, what was not tested. The main session posts it.
@@ -96,9 +82,8 @@ becomes a row in `docs/worklist.md` through a pull request.
 
 `/home/mooki/Code/hookshot-wt/reports/OURS.md` lists everything built for the other port of this game with a verdict
 for Hookshot (port as a feature, fix there too, nothing to do). The two ports are unrelated code on the same game
-binary: **facts about the game carry over** (its options, flags, files, what it asks of the system; addresses convert:
-Hookshot = the other port - 0x7000000000 + 0x80020000), **code faults mostly do not**. A finding from the other port is a
-lead until it is reproduced on Hookshot, and is posted as a lead (issue 1460's comment of 2026-11-10 is the model).
+binary: facts are leads, not proof that the other port's code fault exists here.
+Reproduce on Hookshot before presenting a lead as a finding. Keep game-derived details in private notes.
 
 ## Rules
 
@@ -106,7 +91,23 @@ lead until it is reproduced on Hookshot, and is posted as a lead (issue 1460's c
   `hookshot_log.txt` are fine; keep asset names and local paths out of excerpts.
 - Do not compete with a claimed fix: offer the reproduction and the evidence, and test their change.
 - Everything posted goes into `reports/POSTED.md` with what is owed afterwards.
-- Feature descriptions come from the code/thread or an inspected screen, not memory: #2347 is a Bug report row
-  that saves a folder, not a tab producing a ZIP.
+- Describe features from the current code/thread and inspected images, never memory.
 - Current main's Matrix team updates/test-request queue are opt-in. Read its `AGENTS.md` and the live
   `hookshot-discord-updates` skill; no sign-in, claim or posting action is authorized merely by reading them.
+
+## Workbench MCP routes
+
+Check `workbench_status()` and the installed catalogue. Integrated means registered code, not configured live
+access. Follow cursors; truncated bodies/attachments still need the original reader. Jobs require `job_wait` and
+`job_read` receipts. Pushes, posts and claims stay with Main; MCP never performs them.
+
+| Step | Shell route | MCP tool / group / integration | What it saves |
+|---|---|---|---|
+| Read selected issue/PR | `gh issue view` / `gh pr view` plus paginated comments/reviews | `github_thread_read(repository="NotRexed/Hookshot", number=N)` — knowledge, integrated | One typed head/thread snapshot and completeness flags; no tracker-wide search |
+| Check prior reports and posts | Read report and `POSTED.md` | `knowledge_search(query=..., collection="reports")`; resources `workbench://reports/<id>`, `workbench://obligations?pr=N` — knowledge, integrated | Registered report headings and bounded promise rows; follow the returned report URI |
+| Check overlapping fixes | `pr_overlap.py <pr>` from the evidence skill | No overlap tool exists | Keep shell conflict-hunk inspection |
+| Read CI / request card | `hs-pr-ci.sh <pr>`; supplied request snapshot | `ci_read(repository="NotRexed/Hookshot", pull_request=N)` — checks, integrated; `test_requests_read(card_id=...)` — knowledge, integrated | Named failures and bounded cards; stock chat reader is unavailable without GET-only/no-save support |
+| Pick work / inspect gate | `pr_loop.py next`; GPU guard `--status` | `prloop_next()` — knowledge, integrated; `queue_status()` — status, integrated | Existing queue state, no claim or permission to run |
+| Reproduce windowlessly | `hs-run.sh <owned-copy> <tag> <seconds>` under workbench rules | `session_launch(build_id=..., profile_id=..., wall_seconds=..., idempotency_key=...)` — session, integrated | Registered disposable profile/save and owned lifetime, not a new runner |
+| Inspect / package evidence | Read log, `panels.sh`, shared comparison | `run_faults(run_id=...)`; `evidence_panels(images=..., label=..., idempotency_key=...)`; `evidence_compare(pairing=...)`; `evidence_bundle(request=...)` — evidence, integrated | Structured faults and retained provenance; image review and publication remain separate |
+

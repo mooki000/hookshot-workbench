@@ -16,6 +16,8 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rolling
+if os.environ.get('ROLLING_TEST_MODULE'):
+    rolling = rolling.load_module('rolling', Path(os.environ['ROLLING_TEST_MODULE']))
 from common import HARN, put, env_clean
 from compare import compare_paired
 
@@ -210,6 +212,8 @@ class CycleTests(unittest.TestCase):
             build_config['build_jobs'] = 2
             (out / 'old').mkdir()
             (out / 'new').mkdir()
+            (out / 'old/regress-source.txt').write_text('11111111\n')
+            (out / 'new/regress-source.txt').write_text('22222222\n')
             before = {'commit': 'a'*40, 'copy': str(out / 'old'), 'binary_sha256': {'hookshot': '1'*64}, 'source_stamp': '11111111'}
             after = {'commit': 'b'*40, 'source_commit': 'c'*40, 'copy': str(out / 'new'),
                      'binary_sha256': {'hookshot': '2'*64}, 'source_stamp': '22222222'}
@@ -285,6 +289,59 @@ class TrackingTests(unittest.TestCase):
             with patch.object(rolling, 'ROOT', root):
                 self.assertEqual(rolling.wait_draft(), 0)
             self.assertTrue((root / 'delivered/one.json').exists())
+
+
+class ProvenanceTests(unittest.TestCase):
+    def test_new_reference_snapshot_gets_stamp_without_changing_source(self):
+        import hashlib
+        import shutil
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = root / 'source'; source.mkdir()
+            (source / 'hookshot').write_bytes(b'synthetic executable fixture')
+            manifest = {'copy': str(source), 'commit': 'a' * 40, 'source_stamp': '1234abcd',
+                        'binary_sha256': {'hookshot': hashlib.sha256((source / 'hookshot').read_bytes()).hexdigest()}}
+            def copy_file(argv):
+                shutil.copy2(argv[-2], argv[-1])
+                return ''
+            with patch.object(rolling, 'processes', return_value=[]), patch.object(rolling, 'capture', side_effect=copy_file):
+                result = rolling.snapshot_reference(manifest, root / 'snapshot')
+            self.assertFalse((source / 'regress-source.txt').exists())
+            self.assertEqual((Path(result['copy']) / 'regress-source.txt').read_text(), '1234abcd\n')
+            self.assertEqual(manifest['copy'], str(source))
+
+    def test_new_copy_marker_is_checked_and_never_overwrites_a_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            build = {'copy': str(folder), 'source_stamp': '1234abcd'}
+            with patch.object(rolling, 'processes', return_value=[]):
+                rolling.stamp_new_copy(build)
+                marker = folder / 'regress-source.txt'; inode = marker.stat().st_ino
+                rolling.require_source_marker(build)
+                self.assertEqual(marker.stat().st_ino, inode)
+                with self.assertRaisesRegex(RuntimeError, 'source marker'):
+                    rolling.stamp_new_copy({**build, 'source_stamp': 'abcd1234'})
+            self.assertEqual(marker.read_text(), '1234abcd\n')
+
+    def test_live_copy_is_never_given_a_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            build = {'copy': temporary, 'source_stamp': '1234abcd'}
+            with patch.object(rolling, 'processes', return_value=[{'exe': str(Path(temporary) / 'hookshot')}]):
+                with self.assertRaisesRegex(RuntimeError, 'running'):
+                    rolling.stamp_new_copy(build)
+            self.assertFalse((Path(temporary) / 'regress-source.txt').exists())
+
+    def test_legacy_receipt_without_stamp_remains_readable_and_unchanged(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = {'valid': True, 'source_expected': '', 'start': '2026-11-11T01:00:00+00:00',
+                        'measures': {'mean_ms': 10}, 'others_cores_window': 1, 'others_cores_peak': 2}
+            receipt = root / 'result.json'; put(receipt, original); before = receipt.read_bytes()
+            row = {'result': json.loads(before), 'output': str(root)}
+            rolling.augment_accounting(row, SimpleNamespace(quiet_verdict=lambda *args: True))
+            self.assertTrue(row['result']['valid'])
+            self.assertEqual(row['result']['source_identity'], 'stamp absent, guarded by its log expectation')
+            self.assertEqual(receipt.read_bytes(), before)
+            self.assertFalse((root / 'regress-source.txt').exists())
 
 
 if __name__ == '__main__':

@@ -265,8 +265,9 @@ def hold(plan_path):
                 run_command(argv, out / 'adapter.log', timeout=min(left - 2, seconds + grace), env=os.environ.copy())
                 result = json.loads((out / 'result.json').read_text())
             except (RuntimeError, subprocess.TimeoutExpired, OSError, ValueError) as exc:
-                result = {'valid': False, 'disturbed': True, 'kernel_errors': 0, 'load_before': os.getloadavg()[0],
-                          'load_after': os.getloadavg()[0], 'value': 0, 'summary': str(exc), 'evidence': [str(out)]}
+                result = {'valid': False, 'disturbed': True, 'kernel_errors': None, 'kernel_status': 'unknown',
+                          'load_before': os.getloadavg()[0], 'load_after': os.getloadavg()[0], 'value': None,
+                          'summary': str(exc), 'evidence': [str(out)]}
                 save(out / 'result.json', result)
             runs.append({'role': entry['role'], 'label': entry.get('label', entry['role']), 'commit': entry['commit'],
                          'copy': entry['copy'], 'output': str(out), 'result': result})
@@ -379,8 +380,8 @@ class Hunt:
                 decision = paired_decision(runs, self.scenario, reference_class)
                 self.steps.append({'name': name, 'retry': retry, 'hold': self.holds, 'runs': runs, 'decision': decision})
                 self.persist()
-            if any(r['result'].get('kernel_errors', 0) or r['result'].get('fatal', 0) for r in runs):
-                raise RuntimeError('GPU or game safety fault; no more runs')
+            if any(r['result'].get('kernel_errors') != 0 or r['result'].get('fatal', 0) for r in runs):
+                raise RuntimeError('GPU/game safety fault or unknown kernel coverage; no more runs')
             if decision != 'retry':
                 return decision
         raise RuntimeError(name + ': disturbed, invalid, in-between, disagreeing or reference-drift pairs used up the retries')

@@ -80,6 +80,31 @@ def source_stamp(build, directory):
     return found[0]
 
 
+def require_source_marker(build):
+    """Check execution provenance without changing an existing game copy."""
+    value = build.get('source_stamp', '')
+    marker = Path(build['copy']) / 'regress-source.txt'
+    if not re.fullmatch(r'[0-9a-f]+', value) or marker.is_symlink() or not marker.is_file():
+        raise RuntimeError('source marker absent or invalid; use a new owned stamped snapshot')
+    if marker.read_text().strip() != value:
+        raise RuntimeError('source marker disagrees with the pinned build log')
+
+
+def stamp_new_copy(build):
+    """Only for a just-built copy or a new verified reference snapshot."""
+    folder = Path(build['copy'])
+    if any(Path(p['exe']) == folder / 'hookshot' for p in processes()):
+        raise RuntimeError('copy is running; never change its source marker')
+    value = build.get('source_stamp', '')
+    if not re.fullmatch(r'[0-9a-f]+', value):
+        raise RuntimeError('new copy needs a pinned source marker')
+    marker = folder / 'regress-source.txt'
+    if not marker.exists() and not marker.is_symlink():
+        with marker.open('x') as stream:
+            stream.write(value + '\n')
+    require_source_marker(build)
+
+
 def snapshot_reference(manifest, destination):
     """Read-only source, owned reflink target; never run from the supplied reference folder."""
     source, destination = Path(manifest['copy']), Path(destination)
@@ -103,6 +128,7 @@ def snapshot_reference(manifest, destination):
     if any(Path(p['exe']) == source / 'hookshot' for p in processes()):
         raise RuntimeError('source started during the snapshot; cache consistency is not established')
     (destination / '.rolling-owned').write_text(str(destination.name) + '\n')
+    stamp_new_copy({**manifest, 'copy': str(destination)})
     return {**manifest, 'copy': str(destination), 'binary_sha256': hashes,
             'commit': manifest.get('commit', manifest.get('base')), 'snapshot_of': str(source)}
 
@@ -215,6 +241,8 @@ def run_hold(config, build_config, path, timing):
 def augment_accounting(row, adapter):
     """Re-read legacy quiet evidence through the shared helper; never derive CPU metrics here."""
     result, output = row['result'], Path(row['output'])
+    if result.get('valid') and not result.get('source_expected'):
+        result['source_identity'] = 'stamp absent, guarded by its log expectation'
     measures = result.get('measures', {})
     if not result.get('valid'):
         return
@@ -300,11 +328,7 @@ def handoff(config, build_config, out, scene, decision, previous, new):
     prebuilt = {}
     for label, build in (('previous', previous), ('new', new)):
         manifest = folder / (label + '-build.json')
-        marker = Path(build['copy']) / 'regress-source.txt'
-        if marker.exists() and marker.read_text().strip() != build['source_stamp']:
-            raise RuntimeError('prebuilt source marker disagrees with the measured binary')
-        if not marker.exists():
-            marker.write_text(build['source_stamp'] + '\n')
+        require_source_marker(build)
         put(manifest, {'copy': build['copy'], 'commit': build['commit'], 'sha256': build['binary_sha256'],
                        'source_stamp': build['source_stamp']})
         prebuilt[build['commit']] = str(manifest)
@@ -516,13 +540,18 @@ def cycle(config, *, automatic=False, resume=None, release_baseline=False):
         store = Store(LOCAL / 'results.sqlite')
         try:
             build_path = out / 'build.json'
-            if build_path.exists():
+            fresh_copy = not build_path.exists()
+            if not fresh_copy:
                 build = json.loads(build_path.read_text())
                 if build.get('status') != 'passed' or build['commit'] != head:
                     raise RuntimeError('existing build is incomplete or failed; evidence preserved, no duplicate build started')
             else:
                 build = builder.run(build_config, out, head)
             build['source_stamp'] = source_stamp(build, out)
+            if fresh_copy:
+                stamp_new_copy(build)
+            else:
+                require_source_marker(build)  # resuming execution is not a retrospective comparison
             record['build'] = build
             if not release_baseline:
                 while state['next_full_due_epoch'] <= time.time():

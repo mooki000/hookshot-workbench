@@ -33,6 +33,8 @@ def git(*args):
 
 def conflicts(a, b):
     r = git("merge-tree", "--write-tree", "--name-only", a, b)
+    if r.returncode not in (0, 1):
+        sys.exit("git merge-tree failed; overlap is unknown: " + r.stderr.strip()[:300])
     out = []
     if r.returncode == 1:
         for line in r.stdout.splitlines()[1:]:
@@ -51,11 +53,13 @@ def main():
 
     prs = json.loads(gh("pr", "list", "--repo", REPO, "--state", "open", "--limit", "500", "--json",
                         "number,title,author,isDraft"))
+    if len(prs) >= 500:
+        sys.exit("open PR inventory reached its 500-entry bound; overlap is incomplete")
     meta = {p["number"]: p for p in prs}
     numbers = [p["number"] for p in prs]
     with cf.ThreadPoolExecutor(8) as ex:
-        lists = ex.map(lambda n: gh("api", f"repos/{REPO}/pulls/{n}/files?per_page=100", "--jq",
-                                    ".[].filename").split("\n"), numbers)
+        lists = ex.map(lambda n: gh("api", "--paginate", f"repos/{REPO}/pulls/{n}/files?per_page=100", "--jq",
+                                    ".[].filename").splitlines(), numbers)
     files = {n: [f for f in fl if f] for n, fl in zip(numbers, lists)}
 
     if git("fetch", "-q", "origin", "main").returncode:

@@ -493,6 +493,121 @@ class QueueTests(unittest.TestCase):
             self.assertEqual(loop.parser().parse_args(args).command, "priority")
 
 
+class GapTests(unittest.TestCase):
+    IRIS_BODY = ("## Tested in the game\n\n"
+                 "Iris Xe (Raptor Lake-P, i9-13900H, 32 GB), Mesa ANV 26.2.4, Bazzite.\n\n"
+                 "Not tested: other Intel GPUs, Windows.")
+    QUOTE = "The alternate graphics path still lacks a second-machine check."
+    REASON = "This PC has an Intel UHD 770 on Mesa, which can exercise that independent path."
+
+    def setUp(self):
+        self.config = loop.defaults([], "fixture", NOW)
+        self.note = f'"{self.QUOTE}" — {self.REASON}'
+
+    def test_2564_other_intel_models_and_windows_are_separate_gaps(self):
+        gap = loop.not_tested_gap(self.IRIS_BODY, self.config["hardware"])
+        self.assertIn("other Intel GPUs", gap)
+        state = snapshot(pr(2564, author="thomas-montano", body=self.IRIS_BODY))
+        self.assertEqual(loop.next_action(state, self.config, NOW)["action"], "take")
+        loop.take(state, self.config, 2564, NOW)
+        self.assertEqual(state["active"]["2564"]["why"]["kind"], "not-tested")
+
+    def test_other_nvidia_cards_exclude_the_exact_already_tested_model(self):
+        for model, matches in (("RTX 5080", True), ("RTX 4090", False), ("rtx4090", False),
+                               ("a 4090", False), ("RTX 40900", True)):
+            with self.subTest(model=model):
+                body = f"## Tested\nTested on {model}.\nNot tested: other NVIDIA cards."
+                self.assertEqual(bool(loop.not_tested_gap(body, self.config["hardware"])), matches)
+
+    def test_vendor_gap_near_misses_do_not_match(self):
+        for text in ("Not tested: AMD GPUs.", "Not tested: other Intel GPUs on Windows.",
+                     "Not tested: other Intel GPUs, on Windows.", "Not tested: Intel Arc on Linux."):
+            with self.subTest(text=text):
+                self.assertIsNone(loop.not_tested_gap("## Tested\nIris Xe on Mesa.\n" + text, self.config["hardware"]))
+        same = self.IRIS_BODY.replace("Iris Xe", "Intel UHD 770")
+        self.assertIsNone(loop.not_tested_gap(same, self.config["hardware"]))
+
+    def test_untested_model_or_unrelated_mention_is_not_positive_testing(self):
+        body = "## Tested\nRTX 5080 on Windows.\n## Notes\nRTX 4090 is another model.\nNot tested: other NVIDIA cards."
+        self.assertIsNotNone(loop.not_tested_gap(body, self.config["hardware"]))
+        body = "## Tested\nIris Xe on Mesa.\nNot tested: Intel UHD 770; other Intel GPUs."
+        self.assertIsNotNone(loop.not_tested_gap(body, self.config["hardware"]))
+
+    def test_gap_override_records_quote_reason_and_source_for_any_tier(self):
+        for author in ("stranger", "nullifyshot", "NotRexed"):
+            with self.subTest(author=author):
+                state = snapshot(pr(author=author, body=self.QUOTE))
+                loop.take(state, self.config, 1, NOW, gap=self.note)
+                record = state["active"]["1"]
+                self.assertEqual(record["gap_override"]["quote"], self.QUOTE)
+                self.assertEqual(record["gap_override"]["reason"], self.REASON)
+                self.assertEqual(record["gap_override"]["source_kind"], "description")
+                self.assertEqual(record["gap_override"]["source_url"], pr()["url"])
+                self.assertEqual(record["why"]["kind"], "gap-override")
+                text = loop.report(state, self.config, NOW, EARLIER)
+                self.assertIn(self.QUOTE, text)
+                self.assertIn(self.REASON, text)
+                self.assertEqual(loop.next_action(state, self.config, NOW)["action"], "diff-review")
+                loop.reviewed(state, 1, HEAD, "Read the executable diff.", NOW)
+                loop.scan(state, self.config, FakeBackend([pr(author=author, body=self.QUOTE)]), NOW)
+                self.assertEqual(loop.next_action(state, self.config, NOW)["action"], "test")
+                loop.validate_state(state)
+
+    def test_gap_override_can_quote_comments_reviews_and_inline_threads(self):
+        for kind in ("comment", "review", "inline"):
+            with self.subTest(kind=kind):
+                discussion = event(author="stranger", body=self.QUOTE, kind=kind)
+                state = snapshot(pr(author="stranger", events=[discussion]))
+                loop.take(state, self.config, 1, NOW, gap=self.note)
+                override = state["active"]["1"]["gap_override"]
+                self.assertEqual(override["source_kind"], kind)
+                self.assertEqual(override["source_url"], discussion["url"])
+
+    def test_gap_override_requires_a_real_long_quote_and_a_reason(self):
+        short = "1234567890123456789"
+        source = self.QUOTE + "\n" + short
+        notes = ("", "too short", "A confident judgement with no sentence from this PR.",
+                 '"This sentence never appeared in the source." — ' + self.REASON,
+                 f'"{self.QUOTE}"', f'" {short} " — ' + self.REASON)
+        for note in notes:
+            with self.subTest(note=note):
+                state = snapshot(pr(author="stranger", body=source))
+                before = copy.deepcopy(state)
+                with self.assertRaises(loop.LoopError):
+                    loop.take(state, self.config, 1, NOW, gap=note)
+                self.assertEqual(state, before)
+
+    def test_plain_quote_and_reason_are_accepted_without_literal_quote_marks(self):
+        state = snapshot(pr(author="stranger", body=self.QUOTE))
+        loop.take(state, self.config, 1, NOW, gap=self.QUOTE + " — " + self.REASON)
+        self.assertEqual(state["active"]["1"]["gap_override"]["quote"], self.QUOTE)
+        self.assertEqual(state["active"]["1"]["gap_override"]["reason"], self.REASON)
+
+    def test_gap_override_does_not_bypass_other_safety_exclusions(self):
+        cases = [pr(body="Parked. Not for testing.\n" + self.QUOTE),
+                 pr(draft=True, body=self.QUOTE),
+                 pr(author="mooki000", body=self.QUOTE),
+                 pr(body=self.QUOTE, events=[event()]),
+                 pr(body=self.QUOTE, files=["scripts/unexplained.py"])]
+        for item in cases:
+            with self.subTest(item=item):
+                state = snapshot(item)
+                with self.assertRaises(loop.LoopError):
+                    loop.take(state, self.config, 1, NOW, gap=self.note)
+                self.assertFalse(state["active"])
+        state = snapshot(pr(body=self.QUOTE), requests=[request(approved=False)])
+        with self.assertRaises(loop.LoopError):
+            loop.take(state, self.config, 1, NOW, gap=self.note, request_id="T-ABCD")
+        loop.take(state, self.config, 1, NOW, gap=self.note)
+        self.assertIsNone(state["active"]["1"]["request_id"])
+
+    def test_gap_override_does_not_claim_an_unmatched_approved_card(self):
+        state = snapshot(pr(author="stranger", body=self.QUOTE), requests=[request(needs="Windows")])
+        loop.take(state, self.config, 1, NOW, gap=self.note)
+        self.assertIsNone(state["active"]["1"]["request_id"])
+        self.assertIsNone(state["active"]["1"]["claim"])
+
+
 class AnnotationTests(unittest.TestCase):
     def test_missing_annotation_uses_index_state_without_approval(self):
         config = loop.defaults([], "fixture", NOW)
@@ -655,6 +770,25 @@ class StorageTests(unittest.TestCase):
             self.assertNotIn(value, out.getvalue())
             self.assertNotIn(value, (self.directory / "state.json").read_text())
         self.assertIn("session-exported", out.getvalue())
+
+    def test_take_gap_cli_records_quote_and_preserves_user_config_and_other_records(self):
+        config = loop.defaults([], "fixture", NOW)
+        config["max_active"] = 8
+        state = snapshot(pr(2566), pr(2564, author="thomas-montano", body=GapTests.IRIS_BODY))
+        loop.take(state, config, 2566, EARLIER)
+        loop.atomic_json(self.directory / "config.json", config)
+        loop.atomic_json(self.directory / "state.json", state)
+        config_bytes = (self.directory / "config.json").read_bytes()
+        quote = "Not tested: other Intel GPUs, Windows."
+        note = f'"{quote}" — This PC has an Intel UHD 770 on Mesa, unlike the tested Iris Xe; Windows is a separate gap.'
+        with patch.object(loop, "clock", return_value=NOW), contextlib.redirect_stdout(io.StringIO()), \
+             patch.object(loop.Backend, "run", side_effect=AssertionError("no network")):
+            status = loop.main(["--state-dir", str(self.directory), "take", "2564", "--gap", note])
+        self.assertEqual(status, 0)
+        saved = loop.read_json(self.directory / "state.json")
+        self.assertEqual(saved["active"]["2564"]["gap_override"]["quote"], quote)
+        self.assertEqual(saved["active"]["2566"], state["active"]["2566"])
+        self.assertEqual((self.directory / "config.json").read_bytes(), config_bytes)
 
     def test_next_report_default_summary_and_why_leave_state_untouched(self):
         config = loop.defaults([], "fixture", NOW)

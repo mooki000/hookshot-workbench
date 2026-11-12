@@ -4,6 +4,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 import fcntl
 import json
 import os
@@ -196,6 +197,13 @@ def validate_state(state):
                         and type(proof.get("main_commits")) is int and proof["main_commits"] >= 0
                         and isinstance(proof.get("range_diff"), str), "invalid carry proof")
                 epoch(proof.get("at"))
+            if record.get("gap_override") is not None:
+                gap = record["gap_override"]
+                require(isinstance(gap, dict) and isinstance(gap.get("quote"), str) and len(gap["quote"]) >= 20
+                        and isinstance(gap.get("reason"), str) and gap["reason"].strip()
+                        and isinstance(gap.get("source_url"), str) and isinstance(gap.get("source_kind"), str)
+                        and isinstance(gap.get("head"), str) and SHA.fullmatch(gap["head"]), "invalid gap override")
+                epoch(gap.get("at"))
             if record["claim"] is not None:
                 require(isinstance(record["claim"], dict) and
                         record["claim"].get("status") in ("active", "expired", "released", "finished"), "invalid claim")
@@ -437,22 +445,114 @@ def hardware_fit(needs, hardware):
     return "no", "no installed GPU meets the named family, driver, memory and feature requirements"
 
 
+UNTESTED = re.compile(r"\b(?:not (?:yet )?(?:tested|tried|run|measured)|untested)\b", re.I)
+GPU_WORDS = re.compile(r"\b(?:nvidia|amd|intel|rtx|gtx|rx|arc|uhd|iris)\b", re.I)
+
+
+def tested_hardware_lines(body):
+    """Only positive testing prose can rule out an 'other models' hardware gap."""
+    active, lines = False, []
+    for line in body.splitlines():
+        negative = UNTESTED.search(line)
+        positive = re.search(r"\b(?:tested|verified|measured)\b", line[:negative.start()] if negative else line, re.I)
+        if line.lstrip().startswith("#"):
+            active = bool(positive)
+        elif positive:
+            active = True
+        if active:
+            lines.append(line[:negative.start()] if negative else line)
+        if negative:
+            active = False
+    return lines
+
+
+def model_was_tested(gpu, lines):
+    model = re.search(r"\b(?:rtx|gtx|rx|arc|uhd|iris)\s*(?:[ab]?\d{2,4}|xe)\b", gpu["model"], re.I)
+    parts = re.findall(r"[a-z]+|\d+", (model.group() if model else gpu["model"]).lower())
+    exact = re.compile(r"(?<![a-z0-9])" + r"[\s_-]*".join(re.escape(p) for p in parts) + r"(?![a-z0-9])", re.I)
+    for line in lines:
+        if exact.search(line):
+            return True
+        # A tester may write just 'a 4090'; do not mistake an explicitly different vendor/family or CPU for it.
+        if (gpu["vendor"].lower() == "nvidia" and parts and parts[-1].isdigit() and len(parts[-1]) == 4
+                and not GPU_WORDS.search(line) and not re.search(r"\b(?:cpu|core|ryzen)\b", line, re.I)
+                and re.search(r"\b" + re.escape(parts[-1]) + r"\b", line)):
+            return True
+    return False
+
+
+def gap_clauses(line):
+    # These are separate gaps, not request-card constraints: 'other Intel GPUs, Windows'.
+    # An explicit trailing 'on Windows' still constrains the preceding GPU clause.
+    clauses = []
+    for part in re.split(r"\s*[,;]\s*", line):
+        if clauses and re.match(r"^(?:on|under|running|with)\s+", part, re.I):
+            clauses[-1] += " " + part
+        else:
+            clauses.append(part)
+    return clauses
+
+
 def not_tested_gap(body, hardware):
     section = False
+    tested = tested_hardware_lines(body)
     for line in body.splitlines():
-        marker = re.search(r"\b(?:not (?:yet )?(?:tested|tried|run|measured)|untested)\b", line, re.I)
+        marker = UNTESTED.search(line)
         if line.lstrip().startswith("#"):
             section = bool(marker)
         if marker:
             section = True
             line = line[marker.end():]
-        if section and line.strip(" :*-#"):
-            # Do not turn "game not run" into evidence of a hardware gap.
-            if re.search(r"linux|nvidia|rtx|intel|uhd|mesa|mesh shader|arch", line, re.I):
-                fit, _ = hardware_fit(line, hardware)
-                if fit == "fit":
+        if not section or not line.strip(" :*-#"):
+            continue
+        for clause in gap_clauses(line):
+            if GPU_WORDS.search(clause):
+                for gpu in hardware["gpus"]:
+                    if (not model_was_tested(gpu, tested)
+                            and hardware_fit(clause, {**hardware, "gpus": [gpu]})[0] == "fit"):
+                        return clean(line)
+            elif re.search(r"\b(?:linux|arch|mesa)\b|mesh shader", clause, re.I):
+                if hardware_fit(clause, hardware)[0] == "fit":
                     return clean(line)
     return None
+
+
+def gap_sources(pr):
+    yield "description", pr["url"], " ".join(pr["body"].split())
+    for event in pr["events"]:
+        yield event["kind"], event["url"], " ".join(event["body"].split())
+
+
+def parse_gap_override(pr, text, now):
+    note = " ".join(text.split())
+    require(len(note) >= 20, "--gap needs a quoted excerpt of at least 20 characters and why this PC fills it")
+    sources = list(gap_sources(pr))
+    quoted = list(re.finditer(r'"([^"]{20,})"|“([^”]{20,})”|`([^`]{20,})`', note))
+    found = None
+    if quoted:
+        for match in quoted:
+            quote = next(group for group in match.groups() if group is not None).strip()
+            if len(quote) < 20:
+                continue
+            source = next((s for s in sources if quote in s[2]), None)
+            if source:
+                found = (quote, note[:match.start()] + " " + note[match.end():], source)
+                break
+    else:
+        # Plain 'source sentence — reason' is also a quotation; retain its actual matched text.
+        longest = 0
+        for source in sources:
+            match = SequenceMatcher(None, note, source[2], autojunk=False).find_longest_match()
+            quote = note[match.a:match.a + match.size].strip()
+            if len(quote) >= 20 and len(quote) > longest:
+                found = (quote, note[:match.a] + " " + note[match.a + match.size:], source)
+                longest = len(quote)
+    require(found is not None, "--gap needs an exact 20-character-or-longer quote from the snapshot's description or thread")
+    quote, reason, source = found
+    reason = reason.strip(" \t\"'“”‘’`:;—–-")
+    require(bool(re.search(r"\w", reason)), "--gap also needs a reason why this PC fills the quoted gap")
+    return {"quote": quote, "reason": reason, "text": text.strip(), "source_kind": source[0],
+            "source_url": source[1], "head": pr["head"], "at": now}
 
 
 def parked_description(pr):
@@ -512,10 +612,11 @@ def record_reason(record):
     return record["why"]["text"] + ("; " + carried if carried else "")
 
 
-def candidate(pr, state, config, requests=None, review=None):
+def candidate(pr, state, config, requests=None, review=None, gap_override=None):
     reasons = []
     key = str(pr["number"])
     record = state["active"].get(key) or state["parked"].get(key) or state["done"].get(key)
+    gap_override = gap_override or (record or {}).get("gap_override")
     named = pr["author"].lower() in {a.lower() for a in config["priority_authors"][:-1]}
     if pr["state"] != "OPEN":
         reasons.append("PR is " + pr["state"].lower())
@@ -554,7 +655,7 @@ def candidate(pr, state, config, requests=None, review=None):
             deferred.append(request["id"])
         elif fit == "fit":
             choices.append(request)
-    if linked and not choices and all(note["approved"] for note in request_notes):
+    if linked and not choices and not gap_override and all(note["approved"] for note in request_notes):
         reasons.append("no open request fits this PC: " + "; ".join(n["id"] + " " + n["detail"] for n in request_notes))
     review = review or (record or {}).get("code_review")
     unexplained = unexplained_files(pr)
@@ -568,18 +669,23 @@ def candidate(pr, state, config, requests=None, review=None):
                   and re.search(r"\b(?:please test|could .{0,30}test|needs? testing|test(?:ing|ers)? (?:wanted|welcome)|"
                                 r"can .{0,30}(?:test|try|check)|@" + re.escape(config["user"]) +
                                 r".{0,80}(?:test|try|check|retest))\b", e["body"], re.I)), None)
-    if not named and not request and not gap and not asked and not invited:
+    if not named and not request and not gap and not gap_override and not asked and not invited:
         reasons.append("lowest tier needs a testing request in the description/thread or a hardware gap this PC fills")
         if deferred:
             reasons.append("unapproved card is not an invitation by itself: " + ", ".join(deferred))
         if linked and not request_feed_live:
             reasons.append("request feed unavailable; saved card approval/claim is not current")
     admission = "card approved" if request else "priority author on the user's word" if named else "asked in the thread/description"
+    if gap_override:
+        admission = (admission + "; " if request or named else "") + "main-session hardware-gap judgement"
     card_notes = [f"card {tid} exists but is not approved: no claim" if request_feed_live
                   else f"card {tid} approval is not current: no claim" for tid in deferred]
     if card_notes:
         admission += "; " + "; ".join(card_notes)
-    if request:
+    if gap_override:
+        rank, why = 2, {"kind": "gap-override",
+                       "text": f'main-session gap: "{gap_override["quote"]}" — {gap_override["reason"]} ({gap_override["source_url"]})'}
+    elif request:
         rank = 0 if not request.get("results") and not request.get("claims") else 1 if not request.get("results") else 3
         why = {"kind": "test-request", "request_id": request["id"],
                "text": request["id"] + " fits this PC; " + ("nobody has tested it" if not request.get("results") else "more hardware evidence requested")}
@@ -594,7 +700,7 @@ def candidate(pr, state, config, requests=None, review=None):
         why["text"] += "; " + "; ".join(card_notes)
     return {"number": pr["number"], "author": pr["author"], "title": pr["title"], "head": pr["head"],
             "tier": priority(pr["author"], config), "rank": rank, "created_at": pr["created_at"],
-            "admission": admission, "hardware_fit": bool(request or gap or any(n["fit"] == "fit" for n in request_notes)),
+            "admission": admission, "hardware_fit": bool(request or gap or gap_override or any(n["fit"] == "fit" for n in request_notes)),
             "review_files": risky_files(pr) or pr["files"],
             "why": why, "request_id": request["id"] if request else None,
             "deferred_request_ids": deferred, "requests": request_notes, "exclusions": list(dict.fromkeys(reasons))}
@@ -706,7 +812,7 @@ def refresh_record(record, pr, snapshot, config, now):
     if not incoming and record["wait_for"] in ("author-reply", "new-commits", "maintainer"):
         record["unanswered_cycles"] = max(0, int((epoch(now) - epoch(record["wait_since"])) // (config["stale_days"] * 86400)))
     record["blocks"] = [r for r in candidate(pr, {**new_state(), "snapshot": snapshot}, config,
-                                               review=record.get("code_review"))["exclusions"]
+                                               review=record.get("code_review"), gap_override=record.get("gap_override"))["exclusions"]
                         if not r.startswith("main session must inspect")]
 
 
@@ -941,7 +1047,7 @@ def cached_comment(state, config, number, url):
     return found
 
 
-def take(state, config, number, now, request_id=None, claim_time=None, reviewed_head=None, review_note=None, reopen=False):
+def take(state, config, number, now, request_id=None, claim_time=None, reviewed_head=None, review_note=None, reopen=False, gap=None):
     require_snapshot(state)
     key = str(number)
     require(key not in state["active"], "PR already in hand")
@@ -958,7 +1064,8 @@ def take(state, config, number, now, request_id=None, claim_time=None, reviewed_
         require(previous is not None, "--reopen needs a parked or done PR")
         view["parked"].pop(key, None)
         view["done"].pop(key, None)
-    row = candidate(pr, view, config, review=review)
+    override = parse_gap_override(pr, gap, now) if gap is not None else None
+    row = candidate(pr, view, config, review=review, gap_override=override)
     require(not row["exclusions"], "; ".join(row["exclusions"]))
     request_id = request_id or row["request_id"]
     claim = None
@@ -988,6 +1095,10 @@ def take(state, config, number, now, request_id=None, claim_time=None, reviewed_
                   new_events=[], unanswered_cycles=0, head_moved=False, blocks=[], code_review=review)
     record["admission"] = row["admission"]
     record["deferred_request_ids"] = row["deferred_request_ids"]
+    if override:
+        record["gap_override"] = override
+    else:
+        record.pop("gap_override", None)
     record.pop("finished_at", None)
     record.pop("end_reason", None)
     history(record, now, "take", row["why"]["text"])
@@ -1300,6 +1411,7 @@ def parser():
     take_parser.add_argument("--reviewed-head", help="main's inspected full SHA for a flagged code change")
     take_parser.add_argument("--review-note", help="main's explanation of inspected executable changes")
     take_parser.add_argument("--reopen", action="store_true")
+    take_parser.add_argument("--gap", help="quote at least 20 characters from the snapshot and explain why this PC fills the gap")
     p = sub.add_parser("tested")
     p.add_argument("pr", type=int)
     p.add_argument("--head", required=True)
@@ -1386,7 +1498,7 @@ def main(argv=None):
                 require(args.pr > 0, "PR number must be positive")
                 require_snapshot(state)
                 if args.command == "take":
-                    take(state, config, args.pr, now, args.request, args.claim_time, args.reviewed_head, args.review_note, args.reopen)
+                    take(state, config, args.pr, now, args.request, args.claim_time, args.reviewed_head, args.review_note, args.reopen, gap=args.gap)
                 elif args.command == "tested":
                     tested(state, config, args.pr, args.head, args.verdict, args.comment, now)
                 elif args.command == "waiting":

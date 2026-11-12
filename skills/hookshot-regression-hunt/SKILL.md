@@ -1,234 +1,186 @@
 ---
 name: hookshot-regression-hunt
 description: >
-  Find which merged Hookshot pull request made a build worse: frame times, hitches, start-up, memory, drawing, or a
-  pass/fail check; and measure someone's fix or a draft that asks for testers. Use for "which PR caused this", a
-  regression against an older build, a lead that names a suspect or a switch, a nightly playtest's confirmed
-  regression, "here is the fix, test it". Show the difference first, test named suspects by revert or by switch, then
-  bisect over groups of equal lifted inputs. Read hookshot-workbench and hookshot-perf-compare first.
+  Prove a Hookshot regression, test a named suspect by switch or revert, test a proposed fix, then bisect a confirmed
+  range with the shared regression worker. Cover frame time, stutter, startup, memory observations, drawing and
+  pass/fail checks without confusing ordinary runs with authorized timing. Read hookshot-workbench and
+  hookshot-perf-compare first. Use registered MCP evidence readers, not a second hunt runner.
 ---
 
 # Finding a Hookshot regression
 
-**Use for:** proving a regression, testing a named suspect/fix and bisection. Three frequent commands
-(`P` is the pinned workbench Python, `H=/home/mooki/Games/.hookshot-harness`):
+**Use for:** “which change caused this?”, a named suspect, a proposed fix or a confirmed nightly regression.
+Read `hookshot-workbench`, `hookshot-perf-compare` and the current agent brief. Read `hookshot-pr-evidence` before
+preparing tracker text. All game runs are windowless; a swapchain-only question remains untested. No safety mechanism
+is disabled without explicit authorization. Workers never push or post.
 
 ```sh
-"$P" -I -B "$H/regress/regress.py" plan --repo <repo> --good <sha> --bad <sha> --output <new-dir>
-"$P" -I -B "$H/regress/regress.py" hunt --repo <repo> --good <sha> --bad <sha> --scenario <local.json> --output <new-dir> --max-holds <authorized-count> --exclusive-authorized
-"$H/hs-idle.sh" "$P" -I -B "$H/regress/test_regress.py"
+H="$HOME/Games/.hookshot-harness"
+P="$HOME/Code/hookshot-wt/deps/python/bin/python3"
 ```
 
-The hunt's holds require explicit authorization. **No windowed runs on 2026-11-12**, even if an old
-`window-ok` remains. Window-only questions stay untested. Reports name skills read and tools used.
+The live tools are in `$H/regress`; the public workbench copy uses `regress/`. The four scripts are `regress.py`,
+`build_case.py`, `run_case.py`, and `test_regress.py`. Their code is game-free; scenario paths, saves and input routes
+stay local. Set `REPO`, full `GOOD`/`BAD` commits, `SCENARIO` and a new output directory before using the commands.
 
-Read `hookshot-workbench` (building, the fast path, `hs-run.sh`, the gates) and `hookshot-perf-compare` (what a timing
-needs) first, and `hookshot-pr-evidence` before anything is written for a tracker. The machine's agent brief and the
-caller's word go over every example here. A worker never pushes or posts. This file is public: the method only; which
-save and which input a scenario uses live in local files.
+## 1. Prove and plan the range
 
-## 1. Show the difference before looking for a culprit
+1. Read the whole current request/thread and posted-work record. Check whether a proposed fix is ready for tests.
+   Pin the actual head and the commit its changes sit on. A merge base with current main can be wrong for a branch
+   stacked on a squash-merged PR. Do not attach old-head results to a moved head.
+2. Record both binary hashes, source stamps, settings, release/profile identity and cache state. The log's source
+   stamp is not a Git commit. A two-setting test on one binary is not an old/new build comparison.
+3. Use immutable owned copies without `mods`, `HOS_MODS`, `hookshot_options.ini` or `hookshot_env.txt`, unless an
+   explicitly reviewed scenario records intentional copy settings. Match scene, save, input, output size, cap and
+   upscaler. Warm each scene/mode unmeasured first; copy caches only from an idle finished donor.
+4. Plan without a game or build:
 
-1. **Pin commits, not folders.** The good and the bad build by commit, binary checksums, build flags and profile.
-   Fetch once and write the head down; main moves several times an hour, and a play folder or a copy called "main" can
-   be replaced under you during the hunt. Check what an earlier report really compared: two settings on one build are
-   not old against new.
-2. **Copies of your own**, by reflink, never the player's folder or another lane's copy. Assert for every run: no
-   `mods` folder and `HOS_MODS` unset, no options or environment file in the copy (a saved experiment there changes the
-   run silently), the expected source stamp, device and output size in the log. Name every switch of a run.
-3. **The same scene, input, size, cap, upscaler, and the same cache state.** A freshly prepared copy compiles the
-   pipelines the shipped list lacks in its first run of a scene; an older copy has them. Give every copy one unmeasured
-   run of each scene and mode first, then time. The shader caches' stamp covers the translator's files alone
-   (`nx2/build.py`), so a variant that leaves them alone can take a prepared, warmed copy's caches by reflink (make the
-   copy after the preparation and the warm-up, with no game running from the source).
-4. **In turn inside one quiet hold**: A B A B, and "quiet" is judged by what everything else on the machine used
-   during the run's measuring window, not by the load average: a run counts when the rest used under `quiet_cores`
-   (3) on average, no 5-second sample of it was above `quiet_peak_cores` (6), and the hold's repeats of the same arm
-   agree within `repeat_tolerance` (5 %) on the measure. The 1-minute load is printed beside every run as information
-   only: it lags by a minute and it counts the game's own waiting threads, more on one build than on another, so a
-   load limit marks the slower build more often. The hold may wait the seconds it has to spare before its first run
-   (`settle_seconds`) for the rest to fall under `quiet_cores`, never more. No timing from an ordinary shared run.
-   A disturbance that comes back at fixed times (a desktop job, a timer) shows as one dropped run in hold after hold:
-   write down when the dropped runs' peaks were, look for the period, catch it once with a per-process look at
-   `/proc` at the next mark, and give the plan `window` and `avoid` so that the held worker starts a run a few seconds
-   later instead of losing it. The user's desktop is left alone. Nothing of yours runs beside your own exclusive hold
-   (no analysis, no draft script), and a number from a run that was not quiet is not quoted even as an aside: it is
-   read as a finding.
-5. **One instrument on both builds.** An old build may lack a switch (`RX_VK_FRAME_LOG` without a window came with
-   #2354, `HOS_CHAIN` with #2325): give both the same small local logging patch rather than compare unlike clocks.
-   Frame intervals without a window are CPU intervals after the offscreen copy, not scan-out; when the suspected wait
-   could sit in the swapchain, add one windowed pair under the window rules. With a window the frame-time log counts
-   the swapchain's presents (the start-up screen's too), not the game's: the adapter matches the two at the files'
-   ends. The pixel frame log (`RX_VK_FRAMELOG`, no underscore) writes nothing without a window.
-6. **Count the whole population.** A log line that averages "those that waited" changes meaning when a change alters
-   what counts as waited (the readback line did, with #2125); a line that logs the first N slow cases is a sample.
-   For "how many a frame and how long each" log every call the same way on both builds, with the present number.
-7. **A claim about threads needs the threads**: each thread's processor time from `/proc/<pid>/task/*/stat` over the
-   measurement window (the supplied adapter samples it), not the process total.
-8. **Bands from clean runs.** The good and the bad build's ranges must not overlap in the measure the hunt decides by.
-   Uncapped mean frame time is the steadiest; 1 % low and slow-frame counts need several runs a side. Add the
-   player's own settings (his cap, his upscaler) as a separate arm: what moves uncapped may or may not cost him frames.
+   ```sh
+   "$P" -I -B "$H/regress/regress.py" plan --repo "$REPO" --good "$GOOD" --bad "$BAD" --output "$PLAN_OUT"
+   ```
 
-## 2. Suspects before a bisect
+   `GOOD` must be an ancestor **on BAD's first-parent history**. The output directory must not exist. Read
+   `range.json`: commits, subjects/PR numbers, groups and `distinct_lifts`. The key hashes all `nx2/` except
+   `build.py`, vendored a64-kit and HLE names; it is broader than current upstream `lift_sources()`. A group is
+   conservative compatibility, not proof that a new lift is necessary or sufficient for every generated asset.
+5. Select the actual path under test. A present/swapchain change cannot be judged by a windowless run. An input
+   acknowledgement or load gap does not prove the intended scene; require fresh state and inspected pictures.
+   If the binary lacks a required diagnostic, apply the same reviewed instrument to both arms and disclose it.
+6. For timing, obtain authorization for the named exclusive holds. Use reference/candidate/reference/candidate in
+   one quiet hold. Other-work mean must be below `quiet_cores` (default 3), its five-second peak at most
+   `quiet_peak_cores` (6), and same-arm repeat spread at most `repeat_tolerance` (0.05). Load averages are context.
+   Do not quote a rate from an ordinary shared run. Keep every rejected row.
 
-- **Read the suspect's code and its pull request first**: what it fixes, what it measured, on which hardware, and
-  what its reviewers said was not measured. A wait that got longer may be the removal of a false speed-up.
-- **A lead that names a switch**: read what the switch does on this platform and in both builds before spending a
-  hold. A default can depend on the processor count or the system; a switch can exist in both builds with the same
-  default (then it explains nothing between them, and is an A/B on the bad build only); a default that flipped inside
-  the range is a real candidate even though "the code is in both". Put the switch's own log line into the run's
-  expectations, so a run where it did not take effect is not counted.
-- **A switch needs no build**: `--switch LABEL:NAME=VALUE` runs the bad build with it against the bad build as it is.
-  **A revert** (`--suspect SHA`) is the independent check of the same story, and the only one where no switch exists.
-  A switch that takes back only part of a commit is that part; say so.
-- **What the suspect gives up when off**: write it down before the run, and look for exactly that in the pictures of
-  the run (a stale readback shows as a one-frame brightness step, not as a slow frame).
-- After the suspects: **state the remainder in numbers**: the good build against the bad one with the suspects off, in
-  one hold. Only a remainder beyond the runs' own spread is hunted further.
-- When someone else is already fixing the cause, the product is the measurement on this hardware (and a test of their
-  branch when it exists), not a second fix.
+## 2. Test suspects or a fix, then hunt only the remainder
 
-## 3. Testing someone's fix, or a change that asks for testers
+1. Read a suspect's code and platform-specific defaults on both ends. A switch that already had the same behavior
+   on both commits cannot alone explain their difference. A wait may repair correctness; record what disabling it
+   gives up and the expected log/picture before requesting a diagnostic run.
+2. Build a local scenario with **`schema_version:1`**, not `schema:1`. Use the exact decision metric returned by the
+   adapter. Missing or nonnumeric decision metrics produce an invalid result with `value:null`, never a measured zero.
+   Check the retained `measures` and rejection reason before accepting any classification.
+3. Choose the kind: `timing` is numeric and exclusive; `game-check` is ordinary GPU pass/fail; `check` is CPU-only
+   pass/fail. Numeric decisions currently require `timing`, even for memory. Collect ordinary memory/count results
+   without that classifier; do not request exclusive time merely to satisfy it.
+4. Use a new `HUNT_OUT`, not the earlier plan directory. For an authorized timing hunt:
 
-- Read the whole current thread, description and `POSTED.md` before work. A moved head may be parked, not ready
-  for testing; last night's missed “hold off” description cost 37 minutes of an interrupted tour. A result is
-  called a finding only after checking what the thread already establishes.
-- **Which two commits.** The head, exactly, and the commit its own commits sit on. Git's merge base with main is the
-  wrong base when the branch was stacked on a pull request that has since been squash-merged: say which commit you
-  used and why. A head that moves keeps its results under its own hash; a new head is a new build (a minute by the
-  fast path) and a new table, never a continuation.
-- **The same logging aid on both**, cherry-picked. Where it meets their change, keep their lines and place the aid
-  around them, then say which of its columns still mean the same in both builds and drop the others from every
-  comparison. (A recorded resolution can fill the conflict in by itself and leave the pick unfinished: add, continue.)
-- **Exercise the path the change is in.** A change in the present path does nothing in a run without a window: every
-  measuring run is windowed then, under the window rules, still in turn inside an exclusive hold. Put the swapchain's
-  line (size, present mode) and the change's own state line into each arm's expectations.
-- **For a stutter question** the mean says little: per run the frames over 16.7, 20, 25 and 33 ms, the longest frame,
-  the 99th percentile and the 1 % low, over windows as long as the hold allows, judged in 30-second segments by the
-  quiet rule so that one disturbance costs a segment and not the run; memory available and pages swapped beside the
-  hold when memory pressure is a suspect; the renderer's own slow-frame lines counted and placed by the periodic
-  present-count lines around them, with the thread that wrote them. "None in N seconds and M frames" is a result; a
-  guess at why is marked as one.
-- **Their game-free checks**, on clean checkouts (the logging aid breaks checks that cut source by its text), with
-  both compilers. Then run the head's changed checks in the base's checkout: one that fails there with its own
-  message tests the change, one that stops for a missing piece of text tests the text, one that passes there does
-  not test the change at all. Say which is which.
-- **A flash check needs a control that shows the fault** on this machine: the same build with the mechanism switched
-  off (only with the main session's word), same scene and length. When the control shows nothing, say exactly that:
-  the check then has no proof on a real fault here, and a flash painted into a captured log proves the instrument
-  only. Give the events' sizes and not only their count (small moving bright things make one-frame events of a few
-  blocks, and their number follows how evenly the frames came), and look at the largest ones.
-- Once the fix is merged, what is still worth a hold is on the merged commit: the player's own settings first, then a
-  confirmation; the rest belongs to whoever watches main.
+   ```sh
+   unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKTOP HSGATE_IN_GATE HSGATE_IN_INTEL_GATE
+   "$P" -I -B "$H/regress/regress.py" hunt --repo "$REPO" --good "$GOOD" --bad "$BAD" \
+     --scenario "$SCENARIO" --output "$HUNT_OUT" --max-holds "$HOLDS" --exclusive-authorized
+   ```
 
-## 4. The tool
+   For a reviewed `game-check`/`check` scenario omit `--exclusive-authorized`. CPU checks still use the idle/core-dump
+   wrapper in their trusted adapter. Every gate/run budget stays at the granted value.
+5. To test only named leads, add `--suspects-only` and one or more `--suspect "$SHA"` or
+   `--switch 'label:NAME=VALUE'`. A comma-separated suspect group is reverted together; a switch can set several
+   comma-separated `NAME=VALUE` pairs. Each suspect must lie inside `GOOD..BAD`. Reverts are made in the hunt's own
+   detached worktree. A partial switch tests only that part of the commit.
+6. The hunt first confirms both endpoints, then tests each suspect against the bad build. Without `--suspects-only`
+   it continues bisecting the **original range**, even if a suspect helped. To decide whether more hunting is useful,
+   compare the good build with the bad build after the suspects are removed, in an explicitly planned hold. The tool
+   does not automatically combine suspects or measure that remainder.
+7. For someone's fix, compare its exact base/head with the same diagnostics and settings. Check that the changed
+   game-free test fails on the base for the intended reason, not merely missing source text. Run relevant compiler
+   variants through the test gate. A syntax check is not Windows runtime coverage.
+8. Read `result.json`, `steps.json`, `range.json` and `table.md`. `first_bad` assumes one change of the measure in the
+   range. `suspect_explains` says a tested revert/switch reaches the good band, not the first bad commit.
+   `not_reproduced` and `inconclusive` are real outcomes. Retain the remaining range and reason; never increase the
+   retry/hold budget or weaken an assertion to get an answer.
 
-`regress/` under the harness root holds four scripts (standard library only, nothing of a game in them):
+### Scenario and adapter contracts
 
+- `seconds`, `repetitions` (default 2), `max_retries` (1), `grace_seconds` (25), `settle_seconds`, `quiet_cores`,
+  `quiet_peak_cores`, `repeat_tolerance`, and `measure` are scenario fields. `measure.direction` is
+  `higher-worse`, `lower-worse` or `pass-fail`; numeric `good_max < bad_min` are **worseness** bands, so negate a
+  metric where lower is worse. `build_command` and `run_command` are trusted argv lists, never shell text.
+- CLI budgets are `--max-holds` (default 1), `--max-steps` (9), `--max-hold-seconds` (480) and
+  `--max-wall-seconds` (5400). Each retry consumes another hold. Queue/build time consumes the outer wall budget.
+  Fit paired runs with `2 * repetitions * (seconds + grace_seconds) + 10 <= max_hold_seconds`. A planned 480-second
+  hold is a cap, not observed occupancy. Keep queue evidence and `.hold.json` clocks separately.
+- `run_case.py` is called **inside** the worker's gate via `hs-run.sh --inner`; never call `--inner` to bypass a gate.
+  The scenario's `run` object accepts `user`, `input`, `env`, `anchor` (`load` or `first`), `from`, `to`,
+  `load_after`, `load_before`, `expect_log`, `forbid_log`, `prepare`, `framelog`, and `validator_command`.
+  Do not set `window` under current policy. `anchor:"load"` chooses the longest qualifying gap, not proof of a scene.
+- Results include the selected window's mean/median/p99, 1% low, maximum, `over16_7`, `over20`, `over25`, log blocks,
+  startup time, sampled memory and thread CPU, quiet evidence and driver lines. There is no `over33` column or
+  automatic 30-second quiet segmentation. Extra thresholds must be derived from the same retained window and named.
+- The scene reader requires renderer `frames.csv`. It accepts old three-column and newer seven-column present traces
+  for its other calculations; that does not add a renderer fallback. Headless renderer timing is not display timing.
+  `RX_VK_FRAMELOG` is the pixel stream and remains swapchain-only; do not infer continuous visual coverage from stills.
+- `rss_parts_mb` currently uses the final sample, possibly after exit. Read the last live `samples.json` record for
+  composition, not as the high-water composition. `memmap_lines` counts kernel import-refusal lines, not guest mappings.
+- Inspect `kernel.txt` and the journal exit/stderr fields using the brief's signature rule. Repeated markers inherit
+  their preceding message; only the named complete same-second allocation triple is exempt. Failed/partial journal
+  coverage yields `kernel_errors:null`, `kernel=unknown` in the summary and no automatic hunt retry.
+- `build_case.py` uses an explicitly recorded immutable prebuilt endpoint or a finished compatible donor; otherwise
+  it takes the full-build lock and build gate. It never prepares shaders. Its `build` configuration supplies paths,
+  profile files, optional already-accepted SDK and an identical diagnostic patch for every candidate.
+- A nightly worktree can move and completed objects may be in a cycle-specific directory. Use its completed
+  `build.json` source commit, work directory, game copy and completion receipt to make an owned detached donor snapshot.
+  Match the real profile identity and lift key; never move/edit the active nightly worktree. The fast adapter replaces
+  binaries, not every shipped asset: candidate pipeline-state lists need generation/deployment or a full build.
+- The run adapter requires a nonempty `regress-source.txt` and its match in the game log. Missing provenance is an
+  invalid run, even if another expectation matched. Keep the commit, binary hashes and source stamp in the build receipt.
+  Nightly writes/checks the marker on new built copies and new hash-checked reference snapshots; it never adds one
+  to an old/live copy during hand-off. Historical comparisons still read older receipts without a dedicated stamp,
+  labelled `stamp absent, guarded by its log expectation`; they are not retroactively rejected or rewritten.
+
+## 3. Run a reviewed multi-arm plan and read its evidence
+
+Use the same `_hold` worker for several switches/scenes. There is no separate timing runner or MCP hunt operation.
+A plan needs `kind`, **`entries`**, `run_command`, `scenario`, `seconds`, `grace_seconds`, `max_hold_seconds` and any
+`settle_seconds`/`quiet_cores`. Each entry needs `role`, `label`, `copy`, `commit`, `output`; an entry's optional
+`scenario` is a **path to a local JSON file**, not an inline object. `{seconds}` and `{scenario}` are substituted into
+`run_command`. Use new output paths and run each plan only once; `_hold` does not refuse an old plan by itself.
+
+1. Check that all entries fit the cap, including the ten-second worker reserve. Set `window` and `avoid`
+   (`every`, `at`, `for`, in seconds) only from an observed periodic disturbance. These are `_hold` plan fields;
+   the hunt's automatic plan does not copy them from a scenario.
+2. After authorization for that one timing hold, use the existing GPU gate and an outer shutdown bound:
+
+   ```sh
+   unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKTOP HSGATE_IN_GATE HSGATE_IN_INTEL_GATE
+   "$HOME/Games/hs-gpu-slot" --exclusive timeout --signal=TERM --kill-after=5 475 \
+     "$P" -I -B "$H/regress/regress.py" _hold "$HOLD_PLAN"
+   ```
+
+   This example is only for a reviewed plan with `max_hold_seconds:480`. The real gate supplies its marker; never
+   set one yourself. Never nest it inside the Intel gate. A non-timing game-check uses ordinary admission, with
+   `--whole` when its output/memory needs both slots; it is not a speed measurement.
+3. Keep one managed chain and its real process identity. Wait for its owned child/receipt, not a `pgrep` name match,
+   zombie PID or a gap between holds. End owned games before releasing their gate. Preserve `.runs.json`,
+   `.hold.json`, per-run `result.json`, `summary.txt` and raw artifacts. An invalid run ends the hold.
+4. Use the shared classifier on explicit pairs. A cause is supported when taking it back reaches the good band in
+   clean paired runs, or a valid bisect isolates it. A partial movement beyond spread is a contribution, not the
+   whole cause. Explain what the correctness change fixes beside what it costs.
+5. Give one row per run: build, settings, scene, actual clock/window, load and validity. Inspect the largest visual
+   events and name the frames inspected. A detector's synthetic fault tests the instrument only; a control that
+   never shows the real fault cannot prove a fix. The main session decides whether and where anything is posted.
+
+## Game-free reader check
+
+```sh
+"$H/hs-nocore.sh" "$P" -I -B "$H/regress/test_regress.py"
 ```
-python3 -I regress.py plan --repo REPO --good GOOD --bad BAD --output NEW_DIR
-python3 -I regress.py hunt --repo REPO --good GOOD --bad BAD --scenario LOCAL.json --output NEW_DIR \
-    --max-holds N [--max-steps 9] [--max-hold-seconds 480] [--max-wall-seconds 5400] \
-    [--exclusive-authorized] [--priority-authorized] \
-    [--suspect SHA[,SHA]]... [--switch LABEL:NAME=VALUE[,NAME=VALUE]]... [--suspects-only]
-```
 
-- `plan` reads git only and spends nothing: commit subjects/numbers and **conservative compatibility groups**.
-  The local grouping hashes all `nx2/` except `build.py`, vendored a64-kit and HLE names. That is broader than
-  current upstream `make_game.lift_sources()`; `distinct_lifts` is a group count, not proof that every group
-  necessarily changes lifted output. Builder/prompt-only edits can split it. The adapter may do an unnecessary
-  full build at a boundary; do not weaken the grouping without proving donor compatibility.
-- `hunt` confirms both ends in one hold, tests each suspect and switch on the bad commit, then bisects, choosing the
-  middle of the open range among the commits a finished lift already serves. The budgets are the caller's and are
-  never raised: holds (every retry is one), bisect steps, wall time, the seconds of one hold. `--exclusive-authorized`
-  and `--priority-authorized` are passed only when the main session gave them for this hunt.
-- A step is one hold: reference, candidate, reference, candidate. It decides only when every run is clean and both
-  reference runs are in their band; anything else (a disturbed, invalid or in-between run, a reference that drifted)
-  runs the whole pair again while holds remain, and otherwise the hunt ends `inconclusive` with the smallest range it
-  can support. A run that is not valid ends its hold at once (the card goes back); a kernel fault line ends the hunt.
-- The result: `range.json`, `steps.json`, `table.md` (one row per run, the rejected ones too), `result.json`
-  (`status`: `first_bad`, `suspect_explains`, `not_reproduced`, `inconclusive`; `remaining`; `reason`; `suspects`).
-  `first_bad` assumes the measure changes once in the range; `suspect_explains` says what a revert or a switch does on
-  the bad commit, which is not the same as the first bad commit.
+The tests exercise made-up Git histories, public `plan`, both band directions, pass/fail, invalid/disturbed runs,
+reference drift, held-worker order/bounds/settling, switches and a stand-in wrapper. No game or GPU is started.
+Use `--help` for `regress.py`, `build_case.py` and `run_case.py`; `_hold` itself takes a plan, not `--help`.
 
-**Scenario** (local JSON, schema 1): `kind` (`timing`: an exclusive hold; `game-check`: an ordinary hold, pass/fail
-only; `check`: no GPU), `seconds`, `repetitions`, `max_retries`, `quiet_cores`, `quiet_peak_cores`,
-`repeat_tolerance`, `grace_seconds` (the reserve after each run, 25), `settle_seconds`, `measure` (`name`,
-`direction`, and for numbers `good_max` < `bad_min` in worseness units:
-negate a value where lower is worse), `build_command`, `run_command` (argv lists, never shell text), and what the
-adapters read. Four runs of 90 s with a 15 s reserve fit one 480 s hold with seconds to spare for settling.
+## MCP routes
 
-**`run_case.py`** runs one scenario through `hs-run.sh --inner` inside the hold (it never asks the gate itself). Its
-`run` object: `user` (a save folder), `input`, `env`, `anchor` (`load`: the window starts at the end of the longest
-present gap that begins between `load_after` and `load_before` seconds, so a later hitch is not taken for the load;
-`first`), `from`, `to`, `expect_log`, `forbid_log`, `window`, `prepare`, `framelog`, `validator_command`. It writes
-`result.json` with the frame statistics of the window (mean, median, 1 % low, frames over 16.7, 20 and 25 ms), the
-log's 120-present lines (GPU time, replay phases, pipeline waits), start to first present, the readback counts when the
-local readback log is there, memory high-water mark, per-thread processor time samples (and from them the game's
-processor time a frame), what everything else on the machine used, and the kernel's driver lines. A copy's own build
-stamp (`regress-source.txt` beside the binary) must be in the run's log: a copy that holds another build's binary is
-not counted. The present trace may have three columns (older builds) or seven. Look at the run's pictures yourself: a
-load gap is not proof of the scene.
-The wrapper's historical `frames.csv` “swapchain” label also appears headless; infer the clock from the run's
-environment, not that label. #2602's readback last-part/settled suffix leaves the prefix parser working but changes
-which calls its conditional mean covers. Use the same all-call diagnostic on both builds for per-frame comparisons.
-Memory caveat: the live adapter's `rss_parts_mb` selects the final sample, which can be after game exit and
-therefore empty. Until the staged repair is installed, read the last live raw `samples.json` record for composition;
-it is not necessarily the `peak_rss_mb` high-water composition. `memmap_lines` counts kernel dma-buf refusal lines,
-not guest memfd mappings or resident-memory parts.
+Use the workbench skill's discovery/configuration and completion rules. Integrated means the group is in the integration
+branch; inspect the live catalogue. Registered evidence is required. No tool here runs a bisect or grants timing holds.
 
-**`build_case.py`** builds a candidate: a finished build with the same lift key by reflink and `nx2/build.py` (release
-mode, the profile at `work/build/hookshot_pieces.prof`), else a full build through the lock and the build gate. Its
-`build` object names the local paths, known finished donors with their completion markers, an already accepted SDK,
-and any local patch to apply to every candidate (the logging aid). It leaves the build's source stamp beside the binary.
-
-A moving nightly worktree is not an immutable donor. `build_case.py` looks at the donor's current HEAD and
-`work/fast` or `work/build`; completed nightly objects may instead be in `work/full-cycles/<cycle>`.
-Use the completed `build.json`'s **source_commit**, **work_dir**, immutable game copy and original completion
-receipt: make a detached source snapshot of your own at that commit, reflink that completed work_dir into its
-`work/build`, verify exact `regress.lift_key` equality with the requested candidate, then name that snapshot
-and the frozen copy/receipt as the donor. Never move or edit the active nightly worktree to make it fit.
-Further adapter limits (reported from retained source, not a new timing result):
-- Numeric `hunt` decisions currently require timing/exclusive mode, even for memory. Ordinary memory/count
-  collection uses the held worker without that numeric classifier; this does not authorize an exclusive hold.
-- The fast builder replaces binaries, not every shipped asset. A candidate that changes pipeline-state lists
-  must regenerate/deploy its own list with the candidate's `nx2/pipeline_states.py` merge step, or use a full build;
-  retaining a donor's list invalidates that comparison. Read its CLI rather than guessing arguments.
-- The scene-window reader currently requires renderer `frames.csv`; older headless game-check builds may lack
-  it. Use an explicitly recorded common-present adapter on both sides, or mark the comparison unjudgeable.
-- Fresh rolling builds can have a different recorded relative PGO path and hot-object key than the old bench
-  example. Preserve the receipt's actual profile path/flags/key; do not force the old example onto it.
-
-
-**`test_regress.py`**: game-free checks with made-up histories, synthetic logs and a stand-in adapter (grouping, the
-bands in both directions, pass/fail, disturbed and in-between runs, a drifting reference, the stop conditions, the
-held worker's order, limit and settling, switches, the adapter's statistics and what it hands the wrapper).
-
-## 5. Running holds by hand
-
-A hunt whose arms are not one good/bad pair (several switches, two scenes, the player's settings) is easier as named
-plans run through the same held worker: `regress.py _hold <plan.json>` inside the gate, the plan listing its runs
-(`role`, `label`, `copy`, `commit`, `output`, and a `scenario` of its own per run), `seconds`, `grace_seconds`,
-`max_hold_seconds`, `settle_seconds`, and for a known periodic disturbance `window` (the seconds after a run's start
-its measuring window covers) and `avoid` (`every`, `at`, `for` in seconds of the clock). Write a plan once and never
-run it twice: a hold's evidence is not replaced. One waiter of yours in the gate at a time: a second chain waits for
-the first chain's process to end, not for a gap between its holds. A queued chain is withdrawn by renaming its
-not-yet-started plans aside (the launcher refuses a missing plan) or by cancelling the managed job while it still
-waits; a process search for the chain's command text finds nothing and proves nothing. Count the holds you have used
-from the result files, not from memory.
-
-## 6. What counts as proof, and how a finding is written
-
-- A cause is shown when taking it back on the bad commit moves the measure from the bad band to the good one in clean
-  paired runs, or when the bisect ends on it; "contributes" when it moves part of the way beyond the spread; "ruled
-  out" when its runs stay in the bad band. A list of commits that touch the code involved is a lead, not a finding.
-- Every table has one row per run with the build, the switches, the scene, the load, and the state of the run.
-- Say what the change fixes beside what it costs, so nobody takes back a correctness fix blindly, and what the
-  pictures of the runs without it showed (and how many frames were looked at: stills do not prove a flash is gone).
-- Whether anything is posted, and where, is the main session's and the user's decision.
-
-## 7. Limits
-
-A quiet machine and the gate's holds (a hold is at most eight minutes; exclusive holds stop every build and check on
-the machine); one waiter in the gate at a time; no synchronisation or safety mechanism switched off without the main
-session's word (a diagnostic revert of a wait is such a thing: it is named in the task or asked for).
+| Step | Shell route | MCP tool (group; integration) | What it saves |
+|---|---|---|---|
+| Read request and prior proof | Current thread, posted-work record, report sections | `github_thread_read(repository, number)`, `knowledge_search(query, collection="reports")`, `workbench://reports/{id}` (knowledge; integrated) | Head/snapshot, bounded pagination and revision-pinned resource reads. |
+| Plan/build candidate | `regress.py plan`; `build_case.py` | `build_plan(repo_id, commit, profile_id)`, `build_start(plan_id, idempotency_key)` (checks; integrated) | Registered pinned build plans and receipts, not a history hunt. |
+| Game-free/base checks | `hs-idle.sh ... tests/run_all.py`; Windows helper | `checks_source(repo_id, commit, idempotency_key, compare_with_base=base)`, `checks_windows_syntax(repo_id, commit, base, idempotency_key)` (checks; integrated) | Exact test selections, retained failures and explicit unjudged Windows execution. |
+| Observe gate | Ticket/lock/process inspection | `queue_status(device="gpu")`, `job_read(job_id)` (status; integrated) | Observed queue/hold clocks and receipt, not an ETA. |
+| Ordinary state/pictures | Bounded `hs-run.sh`; control client | `session_launch(build_id, profile_id, wall_seconds, idempotency_key)`, `session_state(run_id)`, `session_shot(run_id)`, `session_stop(run_id, reason, idempotency_key)` (session; integrated) | Owned disposable lifecycle; never a substitute for the exclusive pair. |
+| Hunt/held worker | `regress.py hunt` / `_hold` | **None** | Keep the existing worker and authorization boundary. |
+| Analyse/compare retained pair | `run_case.py`/shared paired readers and raw logs | `run_logs(run_id)`, `run_faults(run_id)`, `evidence_analyze(run_id, analyzer_id, arguments, idempotency_key)`, `evidence_compare(pairing)` (evidence; integrated) | Bounded inputs, clock/settings/quiet validation and exactly two explicit pairs. |
+| Scan/panel retained visuals | `scripts/framelog.py`; labelled `panels.sh` | `evidence_scan_frames(capture_artifact_id, idempotency_key)`, `evidence_panels(images, label, idempotency_key)` (evidence; integrated) | Idle-gated scans and panels; human inspection remains required. |
+| Pre-push/CI/private draft | Existing pre-push/CI readers and evidence table | `checks_pr(repo_id, commit, branch, title_artifact, idempotency_key)`, `ci_read(repository, pull_request)` (checks; integrated); `evidence_bundle(request)` (evidence; integrated) | Retains imports, failing names and private evidence without publishing. |
