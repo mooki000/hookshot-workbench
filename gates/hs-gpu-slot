@@ -1,0 +1,398 @@
+#!/bin/bash
+# Runs a command while it holds a GPU run slot, so the harness's test runs share the RTX 4090 (24.5 GB, and the user's
+# desktop is on it) without running it out of memory: two games at once ran another port into driver timeouts that
+# froze every game's frames. There are two slots (the lock files 0 and 1 of the slot folder). How many may be held at
+# once is the user's switch, the file /home/mooki/Games/.hookshot-harness/gpu-slots: "2" = two runs at once, anything
+# else or no file = one. It is read each time a run is about to be let in, so writing 1 holds from the next run on (a
+# second game that already runs finishes); the GPU guard writes 1 into it at a driver fault line.
+#
+# Waiters are served in the order they asked: each leaves a ticket in queue/ and is let in only while its ticket is the
+# oldest one of a waiter that is still alive; a waiter that finds its own ticket gone puts it back. The first in the
+# queue is let in
+#   - on a free card: it takes slot 0, and before the command starts it waits (up to 90 s, then starts) for the last
+#     run's GPU memory to be given back;
+#   - beside one run (the switch at 2 only): it takes the free slot when that run has been going for a minute (so its
+#     memory shows), the system has memory for one more game, and the card has room for one more game (free memory at
+#     least card_need + card_margin below, read from nvidia-smi; no reading, no start). System memory is the larger
+#     risk of the two: a game takes about 14 GB of it, the machine swaps, and systemd-oomd ends the whole scope every
+#     agent lives in when memory pressure stays at 50 % for 20 s. So a second game needs 30 GB available
+#     (MemAvailable) and a calm /proc/pressure/memory: its "some" line under 10.00 for the last 10 s and under 5.00
+#     for the last 60 s; no reading, no start. Until then it waits, with no time limit, and everyone behind it waits.
+#     The run on the other slot may be one that the gate before this one let in (that gate knows slot 0 only and
+#     writes no holder file; its waiters are still served from this queue until they are gone): then "going for a
+#     minute" is the time for which this waiter itself has seen slot 0's lock held without a break, and nothing
+#     starts beside an --exclusive hold of that gate (somebody holds the quiet lock alone). When that run ends, the
+#     next waiter of the old gate takes slot 0 beside this one without any test of its own: still two games at most;
+#   - with --whole or --exclusive: only when both slots are free, and it keeps both, so no run starts beside it.
+#     --whole is for a run that needs the card's memory to itself (a picture larger than the game's default: hs-run.sh
+#     adds it by itself). --exclusive is for timing measurements: it also takes the quiet lock, so no build
+#     (hs-build-slot), no run of the checks (hs-idle.sh) and no game on the Intel device is beside it. Only when
+#     its turn has come and the card is free does it mark that no new build may start (quiet-wanted.<pid>), and the
+#     mark never stays longer than quiet_wait (600 s; the main session raised it from 180 s at the swap: a run of the
+#     checks takes 4 to 10 minutes, and with 180 s an exclusive run would give up before the last one has ended, again
+#     and again): that long it keeps the card and waits for the builds that run
+#     to end. If they have not, the mark goes, the card goes back, and the run is out of the queue (the next waiters
+#     are served) for quiet_retry (300 s) before it comes back at its place and tries again. (On 2026-11-11 a mark
+#     that stayed while the next waiter's 35-minute hold ran kept every build and every run of the checks from
+#     starting for 17 minutes.) It does not set the mark at all while a build is running that it has seen run for more
+#     than long_build (900 s): it stays out of the queue until that one has ended. The limit is 900 s and not less
+#     because the quiet lock is also held by every run of the checks (three at a time, 4 to 10 minutes each) and by
+#     games on the Intel device: with a shorter limit there would nearly always be a holder past it and the run would
+#     never mark; only a full build (up to 20 minutes) runs for more than 900 s. How long a holder has run is what
+#     this waiter has seen itself, each second from the moment it asked (the quiet lock's lines in /proc/locks, one
+#     per holder): one that was already running then counts from then.
+# The gate does not end a command. The guard writes a holder that keeps a slot for more than 8 minutes into
+# long-holds.log in the slot folder (holder.0 and holder.1 there say who holds each slot and since when).
+# The command and its children keep the locks until they exit.
+# With --priority the run goes before every waiter that asked without it (its ticket carries a time one day back;
+# among priority runs the order asked holds): for the few runs the owner is waiting on, when the queue is hours long.
+# --first goes before the priority runs too (two days back): for the one run that answers the owner's question of the
+# moment. Priority does not starve the others: after a run that came in by --priority or --first the next run let
+# in is the oldest ordinary waiter, if one is alive, then priority again (on 2026-11-11 five priority runs in a row
+# left eleven ordinary waiters standing for 40 to 51 minutes). The file last-kind in the slot folder holds the kind
+# of the run let in last ("p" or "o", and its ticket's name). While it says "p" and an ordinary waiter is alive, a
+# priority waiter takes its own ticket out of the queue (it lies in yielded/ meanwhile) and puts it back when that
+# waiter has been let in: the rule "the oldest live ticket goes first" stays as it is, so waiters of the gate before
+# this one, which know nothing of this, are served by it too. Only --first --exclusive (the main session's quiet
+# window) never steps back.
+#   hs-gpu-slot [--priority | --first] [--whole | --exclusive] <command> [args...]
+set -euo pipefail
+dir=${HSGATE_SLOT_DIR:-/tmp/hs-gpu-slots}
+# Another slot folder is for a test of the gate itself and has to say so (HSGATE_SLOT_TEST=1): a leftover
+# HSGATE_SLOT_DIR in a shell would otherwise let a run start beside the real queue.
+if [ "$dir" != /tmp/hs-gpu-slots ] && [ -z "${HSGATE_SLOT_TEST:-}" ]; then
+    echo "hs-gpu-slot: ignoring HSGATE_SLOT_DIR=$dir (not the harness's slot folder; a test sets HSGATE_SLOT_TEST=1)" >&2
+    dir=/tmp/hs-gpu-slots
+    export HSGATE_SLOT_DIR=$dir
+fi
+q=$dir/queue
+mkdir -p "$dir" "$q" "$dir/yielded"
+card_need=10000    # MiB: what one game at the default picture may take on the card (measured: see reports/GateTwo.md)
+card_margin=2000   # MiB: kept free beyond that
+mem_need=30000     # MiB of system memory that must be available for a second game (a game takes about 14 GB)
+pressure_10=1000   # hundredths: /proc/pressure/memory's "some avg10" must be under 10.00 for a second game,
+pressure_60=500    # and its "some avg60" under 5.00
+settle=60          # seconds a run must have been going before another may start beside it
+quiet_wait=600     # seconds an --exclusive run keeps the card and its mark while it waits for running builds to end
+quiet_retry=300    # seconds it then stays out of the queue before it tries again
+long_build=900     # seconds: while a holder of the quiet lock runs that this waiter has seen for longer, it does not try
+switch=/home/mooki/Games/.hookshot-harness/gpu-slots
+meminfo=/proc/meminfo
+pressure=/proc/pressure/memory
+if [ "$dir" != /tmp/hs-gpu-slots ]; then   # a test of the gate: its own switch, and it may fake the readings and times
+    switch=$dir/gpu-slots
+    meminfo=${HSGATE_SLOT_MEMINFO:-/proc/meminfo}
+    pressure=${HSGATE_SLOT_PRESSURE:-/proc/pressure/memory}
+    settle=${HSGATE_SLOT_SETTLE:-$settle}
+    if [ -n "${HSGATE_SLOT_QUIET:-}" ]; then read -r quiet_wait quiet_retry long_build <<< "$HSGATE_SLOT_QUIET"; fi
+fi
+# A run opens a window on the user's desktop. None is started while his compositor does not run normally: after a crash
+# Hyprland comes back in safe mode, where the harness's window rules are gone and every window opens in front of him.
+# HSGATE_SLOT_NODESKTOP=1 says that the command opens no window there (a gate holder, a headless compositor).
+desktop_ok() {
+    [ -n "${HSGATE_SLOT_NODESKTOP:-}" ] && return 0
+    local p found=0
+    for p in $(pgrep -x Hyprland || true); do
+        found=1
+        # one safe-mode instance may be allowed by the user: .hookshot-harness/safe-mode-ok holds its process id
+        if grep -qz -x -- '--safe-mode' "/proc/$p/cmdline" 2>/dev/null &&
+           [ "$p" != "$(cat /home/mooki/Games/.hookshot-harness/safe-mode-ok 2>/dev/null | tr -d '[:space:]')" ]; then
+            echo "hs-gpu-slot: Hyprland (pid $p) runs in safe mode; the command is not started" >&2
+            return 1
+        fi
+    done
+    [ "$found" = 1 ] || { echo "hs-gpu-slot: no Hyprland is running; the command is not started" >&2; return 1; }
+}
+desktop_ok || exit 3
+# The GPU guard (.hookshot-harness/gpu-guard.sh): after a driver fault it kills the harness's programs on the card and
+# writes the file "closed" into the slot folder; nothing starts while that file is there. It also kills a harness
+# program that has the card open outside this gate. This gate makes sure one guard runs.
+card_open() {
+    local closed=${HSGATE_SLOT_DIR:-/tmp/hs-gpu-slots}/closed
+    if [ -e "$closed" ]; then
+        echo "hs-gpu-slot: the card is closed by the GPU guard ($(head -n 1 "$closed")); the command is not started" >&2
+        return 1
+    fi
+}
+card_open || exit 4
+drained() {
+    [ -n "${HSGATE_SLOT_NODRAIN:-}" ] && return 0
+    for _ in $(seq 45); do
+        used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || echo 0)
+        [ "${used:-0}" -lt 5000 ] && return 0
+        sleep 2
+    done
+    return 0
+}
+excl=0
+whole=0
+prio=0
+while :; do
+    case "${1:-}" in
+        --exclusive) excl=1; whole=1; shift ;;
+        --whole) whole=1; shift ;;
+        --priority) prio=1; shift ;;
+        --first) prio=2; shift ;;
+        *) break ;;
+    esac
+done
+# A ticket's name is the time asked, a day back for a priority run and two for a first one: the queue is served in
+# the order of the names. This gate's tickets hold a "2"; the tickets of the gate before it (one slot) are empty.
+new_ticket() {
+    local stamp
+    stamp=$(date +%s%N)
+    stamp=$((stamp - prio * 86400000000000))
+    ticket=$q/$stamp.$$
+    echo 2 > "$ticket"
+}
+# That process has that lock file open and the open file carries a lock (fdinfo's "lock:" line): it holds the slot.
+# A waiter has both slot files open without a lock.
+holds() {   # $1 pid, $2 lock file
+    local f line
+    for f in "/proc/$1/fd"/*; do
+        [ "$f" -ef "$2" ] || continue
+        while IFS= read -r line; do
+            case "$line" in lock:*FLOCK*) return 0 ;; esac
+        done 2>/dev/null < "/proc/$1/fdinfo/${f##*/}"
+    done
+    return 1
+}
+# The system is not short of memory already (see the top): "some avg10=<n> avg60=<n> ..." of the pressure file.
+pressure_ok() {
+    local kind a10 a60 rest
+    while read -r kind a10 a60 rest; do
+        [ "$kind" = some ] || continue
+        a10=${a10#avg10=}
+        a60=${a60#avg60=}
+        [[ $a10 =~ ^[0-9]+\.[0-9][0-9]$ && $a60 =~ ^[0-9]+\.[0-9][0-9]$ ]] || return 1
+        [ "$((10#${a10/./}))" -lt "$pressure_10" ] && [ "$((10#${a60/./}))" -lt "$pressure_60" ]
+        return
+    done 2>/dev/null < "$pressure"
+    return 1
+}
+# May this run start beside the one that holds the other slot ($1)? Every "no" means: keep waiting.
+second_ok() {
+    local other=$1 t pid age avail used total
+    nap=1
+    [ "$slots" = 2 ] || return 1
+    # The other run has been going for $settle seconds. A run let in by this gate wrote holder.<slot> (its pid; the
+    # file's time is its start). A run on slot 0 without one was let in by the gate before this one: what counts
+    # then is how long this waiter has seen slot 0's lock held without a break (watch_locks: that gate's process
+    # starts when it asks, not when its command starts, so its own age says nothing), and there is no second game
+    # while anybody holds the quiet lock alone (an --exclusive timing hold).
+    if pid=$(cat "$dir/holder.$other" 2>/dev/null) && [[ $pid =~ ^[0-9]+$ ]] && holds "$pid" "$dir/$other"; then
+        age=$(stat -c %Y "$dir/holder.$other" 2>/dev/null) || return 1
+    elif [ "$other" = 0 ] && [ -n "$slot0_id" ] && [ "$quiet_alone" = 0 ]; then
+        age=$slot0_since
+    else
+        return 1
+    fi
+    [ $(( $(date +%s) - age )) -gt "$settle" ] || return 1   # (whole seconds on both sides: "more than" is at least $settle)
+    avail=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' "$meminfo" 2>/dev/null) || return 1
+    [ "${avail:-0}" -ge "$mem_need" ] || return 1
+    pressure_ok || return 1
+    nap=3   # from here on each try reads the card: every third second is enough
+    IFS=', ' read -r used total < <(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | head -n 1) || true
+    [[ ${used:-} =~ ^[0-9]+$ && ${total:-} =~ ^[0-9]+$ ]] || return 1
+    [ $((total - used)) -ge $((card_need + card_margin)) ]
+}
+# Tries to take what this run needs, without waiting. On success: held = the slot(s) it has now, second = 1 when
+# another run holds the other slot.
+take() {
+    held="" second=0 nap=1
+    if [ "$whole" = 1 ]; then
+        flock -n 9 || return 1
+        flock -n 19 || { flock -u 9; return 1; }
+        held="0 1"
+        return 0
+    fi
+    if flock -n 9; then
+        if flock -n 19; then   # nobody on slot 1 either: the card is free
+            flock -u 19
+            held=0
+            return 0
+        fi
+        if second_ok 1; then held=0; second=1; return 0; fi
+        flock -u 9
+        return 1
+    fi
+    [ "$slots" = 2 ] || return 1
+    flock -n 19 || return 1
+    if second_ok 0; then held=1; second=1; return 0; fi
+    flock -u 19
+    return 1
+}
+mark_held() {   # who holds which slot, and since when (the file's time)
+    local s
+    for s in $held; do echo $$ > "$dir/holder.$s"; done
+}
+# What this waiter sees in /proc/locks, each second from the moment it asked. Every holder of a lock is one line
+# there, and the number in it stays the same for as long as that holder keeps the lock.
+#   The quiet lock: its READ lines are builds, runs of the checks, games on the Intel device: oldest = the seconds
+#   since this waiter first saw the one it has seen longest (0: nobody). A WRITE line is an --exclusive timing hold:
+#   quiet_alone=1.
+#   Slot 0's lock: slot0_id = its holder's number ("" while it is free), slot0_since = when this waiter first saw it.
+declare -A seen=()
+quiet_key=
+slot0_key=
+slot0_id=
+slot0_since=0
+quiet_alone=0
+retry_at=0
+watch_locks() {
+    local now a b c mode id where rest cur=" " s0=""
+    oldest=0
+    quiet_alone=0
+    if [ -z "$quiet_key" ]; then
+        : >> "$dir/quiet"
+        printf -v quiet_key '%02x:%02x:%s' $(stat -c '%Hd %Ld %i' "$dir/quiet")
+        printf -v slot0_key '%02x:%02x:%s' $(stat -c '%Hd %Ld %i' "$dir/0")
+    fi
+    printf -v now '%(%s)T' -1
+    while read -r a b c mode id where rest; do
+        [ "$b" = FLOCK ] || continue
+        if [ "$where" = "$quiet_key" ]; then
+            if [ "$mode" = READ ]; then
+                cur="$cur$id "
+                if [ -z "${seen[$id]:-}" ]; then seen[$id]=$now; fi
+                if [ $((now - seen[$id])) -gt "$oldest" ]; then oldest=$((now - seen[$id])); fi
+            else
+                quiet_alone=1
+            fi
+        elif [ "$where" = "$slot0_key" ]; then
+            s0=$id
+        fi
+    done < /proc/locks
+    if [ "$s0" != "$slot0_id" ]; then
+        slot0_id=$s0
+        slot0_since=$now
+    fi
+    for id in "${!seen[@]}"; do
+        if [[ $cur != *" $id "* ]]; then unset "seen[$id]"; fi
+    done
+    return 0
+}
+# Out of the queue: at least three seconds, so the next waiter takes the card, and for as long as this run may not
+# try (it gave up less than quiet_retry ago, or a build it has seen run for more than long_build still runs). Then
+# its ticket is back under its old name: its place is kept.
+stand_aside() {
+    local now
+    rm -f "$ticket"
+    while :; do
+        sleep 3
+        watch_locks
+        printf -v now '%(%s)T' -1
+        if [ "$now" -ge "$retry_at" ] && [ "$oldest" -le "$long_build" ]; then break; fi
+    done
+    echo 2 > "$ticket"
+}
+# Priority does not starve the ordinary queue (see the top). Returns 0 while this run stands back for an ordinary
+# waiter; its ticket is then out of the queue and in yielded/.
+yield_to=     # the ordinary ticket this run lets go first
+yield_seen=   # what last-kind held when it began to
+yielding() {
+    [ "$prio" -ge 1 ] || return 1
+    [ "$prio" = 2 ] && [ "$excl" = 1 ] && return 1
+    local last="" t stamp now ord=""
+    IFS= read -r last < "$dir/last-kind" || true
+    if [ -n "$yield_to" ] && [ ! -e "$q/$yield_to" ] && [ "$last" = "$yield_seen" ]; then
+        # the one this run stood back for is out of the queue and nobody has said so: the gate before this one let
+        # it in (it writes no last-kind), or it gave up
+        last="o $yield_to"
+        echo "$last" > "$dir/last-kind"
+    fi
+    if [[ $last == p* ]]; then
+        printf -v now '%(%s)T' -1
+        for t in "$q"/*; do
+            [ -e "$t" ] || continue
+            stamp=${t##*/}
+            stamp=${stamp%%.*}
+            [[ $stamp =~ ^[0-9]{1,19}$ ]] || continue
+            # an ordinary ticket's time is when it asked; a priority's lies a day back, a first's two
+            [ "$stamp" -gt $(( (now - 72000) * 1000000000 )) ] || continue
+            grep -qa hs-gpu-slot "/proc/${t##*.}/cmdline" 2>/dev/null || continue
+            ord=${t##*/}
+            break
+        done
+    fi
+    if [ -n "$ord" ]; then
+        if [ -z "$yield_to" ]; then echo 2 > "$dir/yielded/${ticket##*/}"; fi
+        rm -f "$ticket"
+        yield_to=$ord
+        yield_seen=$last
+        return 0
+    fi
+    if [ -n "$yield_to" ]; then
+        yield_to=
+        rm -f "$dir/yielded/${ticket##*/}"
+    fi
+    return 1
+}
+new_ticket
+trap 'rm -f "$ticket" "$dir/quiet-wanted.$$" "$dir/yielded/${ticket##*/}"' EXIT
+exec 9>"$dir/0" 19>"$dir/1"
+while :; do
+    watch_locks
+    if yielding 2>/dev/null; then
+        sleep 1
+        continue
+    fi
+    # A ticket can vanish while its waiter lives (it happened on 2026-11-10: the waiter then waited for ever): back
+    # it goes, under its old name, so at its old place.
+    [ -e "$ticket" ] || echo 2 > "$ticket"
+    first=
+    for t in "$q"/*; do
+        [ -e "$t" ] || continue
+        p=${t##*.}
+        if [ "$p" = "$$" ] || grep -qa hs-gpu-slot "/proc/$p/cmdline" 2>/dev/null; then
+            first=$t
+            break
+        fi
+        rm -f "$t"
+    done
+    nap=1
+    if [ "$first" = "$ticket" ]; then
+        if [ "$excl" = 1 ] && [ "$oldest" -gt "$long_build" ]; then
+            # A build that will not end soon: no use in marking, and none in standing first in the queue meanwhile.
+            stand_aside
+            continue
+        fi
+        slots=1
+        if [ -r "$switch" ] && [ "$(tr -d '[:space:]' < "$switch" 2>/dev/null)" = 2 ]; then slots=2; fi
+        if take; then
+            [ "$excl" = 1 ] || break
+            : > "$dir/quiet-wanted.$$"   # the card is free and it is this run's turn: from here on no new build starts
+            exec 5>"$dir/quiet"
+            got=0
+            for ((i = 0; i < quiet_wait; i++)); do
+                if flock -n -x 5; then got=1; break; fi
+                sleep 1
+            done
+            [ "$got" = 1 ] && break
+            # The builds that ran have not ended in time: the mark goes (builds and checks start again), the card
+            # goes back, and this run stays away for a while.
+            rm -f "$dir/quiet-wanted.$$"
+            exec 5>&-
+            flock -u 9
+            flock -u 19
+            printf -v now '%(%s)T' -1
+            retry_at=$((now + quiet_retry))
+            stand_aside
+            continue
+        fi
+    fi
+    sleep "$nap"
+done
+mark_held   # before the ticket goes: the next waiter must find this run's mark, not the last run's
+if [ "$prio" -ge 1 ]; then kind=p; else kind=o; fi
+[ "$prio" = 2 ] && [ "$excl" = 1 ] || echo "$kind ${ticket##*/}" > "$dir/last-kind"   # (also before the ticket goes)
+rm -f "$ticket" "$dir/quiet-wanted.$$" "$dir/yielded/${ticket##*/}"
+trap - EXIT
+desktop_ok || exit 3   # again: the turn may have come hours after the command asked
+card_open || exit 4
+# the guard runs detached, without this gate's locks
+setsid /home/mooki/Games/.hookshot-harness/gpu-guard.sh 9>&- 19>&- 5>&- 7>&- 8>&- < /dev/null > /dev/null 2>&1 &
+export HSGATE_IN_GATE=$$   # the guard tells this command's children from programs outside the gate by it
+[ "$second" = 1 ] || drained   # (beside a run the card is never "drained": room was the condition for the start)
+mark_held   # again: the minute before a run may start beside this one counts from the command's start
+exec "$@"

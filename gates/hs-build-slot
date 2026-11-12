@@ -1,0 +1,47 @@
+#!/bin/bash
+# Runs a CPU-only command (a compile-only rebuild: make_game.py --rebuild ... --until compile) while it holds one of
+# four build slots (two until the performance research began to build whole variants of the game, twenty minutes
+# each, behind which every thirteen-file rebuild waited). Builds wait while an exclusive GPU timing run holds the quiet
+# lock (hs-gpu-slot --exclusive), and no build starts once such a run's turn has come. The command runs in the
+# idle scheduling class (SCHED_IDLE, and at nice 15 for tools that show it): its processes run only where no normal
+# process wants the processor. With four builds the machine has more work than processors; at the builds' own
+# priority a game beside them fell to half its frame rate, and at nice 15 alone it still ran at 23 to 27 fps
+# instead of 56 when the load was 60 to 87, which broke tests that count on game time.
+#   hs-build-slot <command> [args...]
+set -euo pipefail
+dir=${HSGATE_BUILD_SLOT_DIR:-/tmp/hs-build-slots}
+gpu=${HSGATE_SLOT_DIR:-/tmp/hs-gpu-slots}
+mkdir -p "$dir" "$gpu"
+# Two builds may lift at once (a changed patch table lifts the whole game again): 12 workers each keep both inside the
+# processor and the memory; a lift with every core, twice, has ended in a pool that waits forever.
+export HSGATE_LIFT_JOBS=${HSGATE_LIFT_JOBS:-12}
+# Since upstream keeps the runtime's own shaders as source only, make_game.py run from a checkout finds no compiled
+# headers (upstream builds them in build_game.py and for kits). Build the missing and stale ones here, in the worktree
+# the build is started from, where git ignores them; two seconds, and nothing when they are current.
+if [ -f tools/build_shaders.py ] && git check-ignore -q runtime/wb_merge_spv.h 2>/dev/null; then
+    /home/mooki/Code/hookshot-wt/deps/python/bin/python3 -I tools/build_shaders.py > /dev/null 2>&1 || true
+fi
+while :; do
+    wanted=0
+    for m in "$gpu"/quiet-wanted.*; do
+        [ -e "$m" ] || continue
+        if grep -qa hs-gpu-slot "/proc/${m##*.}/cmdline" 2>/dev/null; then
+            wanted=1
+        else
+            rm -f "$m"
+        fi
+    done
+    if [ "$wanted" = 0 ]; then
+        for i in 0 1 s2 s3; do
+            exec 9>"$dir/$i"
+            if flock -n 9; then
+                exec 8>"$gpu/quiet"
+                flock -s 8
+                # (2026-11-11: through hs-nocore.sh: a compiler that crashes or is ended mid-build left a core dump,
+                # and each one is a "process crashed" notification on the user's desktop; the build still fails as before)
+                exec chrt --idle 0 nice -n 15 /home/mooki/Games/.hookshot-harness/hs-nocore.sh "$@"
+            fi
+        done
+    fi
+    sleep 2
+done

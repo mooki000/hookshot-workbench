@@ -1,0 +1,72 @@
+#!/bin/bash
+# Runs a command (a game on the processor's Intel graphics) while it holds the one Intel run slot. The Intel device is a
+# second Vulkan device beside the RTX 4090 (Mesa's driver, no mesh shaders, memory shared with the system), so its runs
+# do not wait in the card's queue (hs-gpu-slot). They are CPU load like a build, though: as a build does
+# (hs-build-slot), a run here waits while an exclusive timing run on the card has marked that nothing may start,
+# and holds the quiet lock shared while it runs, so no timing run starts beside it.
+# The game sees only the Intel device when the run sets VK_DRIVER_FILES=/usr/share/vulkan/icd.d/intel_icd.json (a game
+# copy's scenario.sh sets NVIDIA's file: change it in the copy that is meant for this device).
+#   hs-intel-slot <command> [args...]
+set -euo pipefail
+dir=${HSGATE_INTEL_SLOT_DIR:-/tmp/hs-intel-slot}
+gpu=${HSGATE_SLOT_DIR:-/tmp/hs-gpu-slots}
+# Other folders are for a test of the gate itself and have to say so (HSGATE_SLOT_TEST=1).
+if [ -z "${HSGATE_SLOT_TEST:-}" ] && { [ "$dir" != /tmp/hs-intel-slot ] || [ "$gpu" != /tmp/hs-gpu-slots ]; }; then
+    echo "hs-intel-slot: ignoring HSGATE_INTEL_SLOT_DIR and HSGATE_SLOT_DIR (not the harness's slot folders; a test sets HSGATE_SLOT_TEST=1)" >&2
+    dir=/tmp/hs-intel-slot; gpu=/tmp/hs-gpu-slots
+    export HSGATE_INTEL_SLOT_DIR=$dir HSGATE_SLOT_DIR=$gpu
+fi
+mkdir -p "$dir" "$gpu"
+# A run opens a window on the user's desktop. None is started while his compositor does not run normally: after a crash
+# Hyprland comes back in safe mode, where the harness's window rules are gone and every window opens in front of him.
+# HSGATE_SLOT_NODESKTOP=1 says that the command opens no window there (a gate holder, a headless compositor).
+desktop_ok() {
+    [ -n "${HSGATE_SLOT_NODESKTOP:-}" ] && return 0
+    local p found=0
+    for p in $(pgrep -x Hyprland || true); do
+        found=1
+        # one safe-mode instance may be allowed by the user: .hookshot-harness/safe-mode-ok holds its process id
+        if grep -qz -x -- '--safe-mode' "/proc/$p/cmdline" 2>/dev/null &&
+           [ "$p" != "$(cat /home/mooki/Games/.hookshot-harness/safe-mode-ok 2>/dev/null | tr -d '[:space:]')" ]; then
+            echo "hs-intel-slot: Hyprland (pid $p) runs in safe mode; the command is not started" >&2
+            return 1
+        fi
+    done
+    [ "$found" = 1 ] || { echo "hs-intel-slot: no Hyprland is running; the command is not started" >&2; return 1; }
+}
+desktop_ok || exit 3
+# The GPU guard (.hookshot-harness/gpu-guard.sh): after a driver fault it kills the harness's programs on the card and
+# writes the file "closed" into the slot folder; nothing starts while that file is there. It also kills a harness
+# program that has the card open outside this gate. This gate makes sure one guard runs.
+card_open() {
+    local closed=${HSGATE_SLOT_DIR:-/tmp/hs-gpu-slots}/closed
+    if [ -e "$closed" ]; then
+        echo "hs-intel-slot: the card is closed by the GPU guard ($(head -n 1 "$closed")); the command is not started" >&2
+        return 1
+    fi
+}
+card_open || exit 4
+exec 7>"$dir/0"
+flock 7   # one game on the Intel device at a time
+while :; do
+    wanted=0
+    for m in "$gpu"/quiet-wanted.*; do
+        [ -e "$m" ] || continue
+        if grep -qa hs-gpu-slot "/proc/${m##*.}/cmdline" 2>/dev/null; then
+            wanted=1
+        else
+            rm -f "$m"
+        fi
+    done
+    if [ "$wanted" = 0 ]; then
+        exec 8>"$gpu/quiet"
+        flock -s 8
+        desktop_ok || exit 3   # again: the turn may have come long after the command asked
+        card_open || exit 4
+        # the guard runs detached, without this gate's locks
+        setsid /home/mooki/Games/.hookshot-harness/gpu-guard.sh 9>&- 5>&- 7>&- 8>&- < /dev/null > /dev/null 2>&1 &
+        export HSGATE_IN_INTEL_GATE=$$
+        exec "$@"
+    fi
+    sleep 2
+done

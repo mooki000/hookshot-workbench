@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+runs/
+saves/
+world/
+NOTES.md
+LOCAL-NOTES.md
+pr-check-forbidden.txt
+.private/
