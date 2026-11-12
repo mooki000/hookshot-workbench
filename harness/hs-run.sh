@@ -317,6 +317,6 @@ print("hs-run %s exit=%s wall=%ss span=%.1fs from=%gs %s shots=%d %s %.1fMB fata
          (" HOME-WRITES:" + home) if home else ""))
 PY
 ) || exit $?
-echo "$line" | tee "$R/summary.txt"
-echo "$(cat "$R/start.txt") $line" >> "$H/runs.log"
+echo "$line" | tee "$R/summary.txt" || exit $?
+echo "$(cat "$R/start.txt") $line" >> "$H/runs.log" || exit $?
 exit 0
