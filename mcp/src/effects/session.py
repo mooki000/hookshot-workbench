@@ -685,7 +685,8 @@ class SessionService:
             producer=Producer(tool="session_launch"), run_id=session.run_id, complete=True)
         artifacts.append(artifact.id)
         for filename, mime, clock in (("hookshot_log.txt", "text/plain", None), ("frames.csv", "text/csv", "renderer-offscreen-submit"),
-                ("present.csv", "text/csv", "game-present"), ("exit.txt", "text/plain", None), ("session-stop.json", "application/json", "host-monotonic")):
+                ("present.csv", "text/csv", "game-present"), ("perf.csv", "text/csv", "renderer-offscreen-submit"),
+                ("exit.txt", "text/plain", None), ("session-stop.json", "application/json", "host-monotonic")):
             path = session.root / filename
             if path.is_file() and path.stat().st_size <= 64*1024*1024:
                 art = self.deps.registry.add_artifact(path, guards=self.deps.paths, mime=mime, producer=Producer(tool="session_launch"),

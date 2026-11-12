@@ -204,6 +204,20 @@ to 86,400 seconds. A profile selects the surface, not gate permission.
 old switch files, historical documentation and tool arguments cannot authorize windows or a new hold. An authorization
 claim is durable and bound to one job; using a new idempotency key does not reuse a consumed hold.
 
+## Optional proposed telemetry file
+
+`system_telemetry(run_id, frame_window=None, time_window=None)` is a separate READ surface for a registered `perf.csv`.
+The writer and file format are still a proposal in [Hookshot issue #2915](https://github.com/NotRexed/Hookshot/issues/2915).
+The tool reports `available:false` and **“no performance file in this run”** when that run has no registered existing file;
+it does not pretend the game already writes one or treat absence as an error.
+
+When present, the configured trusted `perf/hs_perf.py` reader supplies bounded observations (64 MiB input, 128 KiB result).
+Frame windows use exact renderer frame IDs; time windows use OS monotonic seconds. Optional same-run `frames.csv` must
+have the matching renderer clock. Partial/failed captures retain their completeness warnings; missing metrics stay null.
+This read makes no new job or artifact and cannot confer timing validity, a speed verdict, or causal significance.
+The four existing `evidence_analyze` IDs, their schemas/dispatch, and all comparison rules are unchanged. Telemetry output
+has its own producer and result type and is not accepted as a paired timing-analysis artifact.
+
 ## Registered surface
 
 These tables come from real registration, not a hand-maintained list. Regenerate them after changing a group:
@@ -255,6 +269,7 @@ uv run python -m src.generate_readme --check
 | `session_stop` | session | WRITE_LOCAL | operate | yes | run_id, reason, idempotency_key | Owned input/game shutdown before gate release and final receipt |
 | `session_teleport` | session | WRITE_LOCAL | operate | yes | run_id, destination_id, idempotency_key | One listed debug teleport plus observed arrival checks |
 | `session_wait` | session | READ | observe, operate | yes | run_id, predicate, idempotency_key | Observed frame/state/map predicates, not guessed boot sleeps |
+| `system_telemetry` | telemetry | READ | observe, operate | no | run_id | Optional proposed perf.csv reader (#2915); no file means unavailable observation, not an error |
 | `team_read` | knowledge | READ | observe, operate | no | room | Attested GET-only existing-room read; unsafe stock CLI stays unavailable |
 | `test_requests_read` | knowledge | READ | observe, operate | no | none | Attested GET-only request list/show; unsafe stock CLI stays unavailable |
 | `workbench_status` | status | READ | observe, operate | no | none | Manual policy, prerequisite, revision and active-job inspection |

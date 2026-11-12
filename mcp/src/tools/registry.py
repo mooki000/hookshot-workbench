@@ -2,7 +2,7 @@
 from importlib import import_module
 from src.policy import Safety, check_spec
 
-GROUPS = ("status", "checks", "evidence", "knowledge", "session")
+GROUPS = ("status", "checks", "evidence", "knowledge", "session", "telemetry")
 
 
 def select(specs, profile, extra_tools=()):

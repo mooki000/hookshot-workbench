@@ -14,6 +14,7 @@ from src.policy import DENIED_TOOLS, Safety, ToolSpec, check_spec, PathGuards, P
 
 REQUIRED = {
     "workbench_status": [], "queue_status": [], "jobs_list": [],
+    "system_telemetry": ["run_id"],
     "job_read": ["job_id"], "job_wait": ["job_id"], "job_cancel": ["job_id"],
     "build_plan": ["repo_id", "commit", "profile_id"], "build_start": ["plan_id", "idempotency_key"],
     "checks_source": ["repo_id", "commit", "idempotency_key"],
@@ -37,6 +38,7 @@ REQUIRED = {
 }
 READ_TOOLS = {
     "workbench_status", "queue_status", "jobs_list", "job_read", "job_wait", "ci_read",
+    "system_telemetry",
     "run_logs", "run_faults", "evidence_compare", "github_thread_read", "prloop_next",
     "test_requests_read", "team_read", "nightly_status", "knowledge_search",
     "session_state", "session_wait", "session_options_get", "session_saves_list",
