@@ -20,8 +20,9 @@ the same documented game control bridge protocol itself; it does not import Hook
 dispatcher preserves interleaved events and matches concurrent replies, rather than importing mutable checkout code
 or losing subscription events while awaiting a command.
 
-The integrated server has been exercised against fake backends only so far. The first real gated session is pending;
-no gameplay, rendering, performance or save-drain guarantee is implied.
+The automated suite uses fake backends. One real windowless smoke exercised launch, status, capture, logs and ordered
+stop, but input was attempted during boot and the image was black. The readiness repair has fake coverage; a second
+real input/visible-image smoke is pending. No performance or save-drain guarantee is implied.
 
 ## Install and start
 
@@ -78,9 +79,35 @@ uv run --project mcp hookshot-wb broker stop --timeout 90
 Tool calls go through the real server in memory, with the same profiles, schema validation and error envelopes.
 Structured results are JSON on stdout; coded errors are JSON on stderr with a nonzero exit. On the first broker-owned
 call, stderr also says `hookshot-wb: broker started` once. A returned Job is returned immediately, not awaited to
-completion: in particular, a launch Job describes the session's lifetime. Use `job_read` events for `bridge_ready`,
-and observed `session_state` before further actions. `job_wait` timing out is a normal result with `timed_out: true`;
+completion: in particular, a launch Job describes the session's lifetime. `job_read` nests rows under `events.events`;
+each event name is its `kind`, for example `bridge_ready`. That event proves a bridge reply, **not input or image readiness**.
+`job_wait` timing out is a normal result with `timed_out: true`;
 an outer CLI `--timeout` is a separate bounded transport wait. Never replay an uncertain mutation.
+
+Before a press or picture, use `session_wait` with `predicate: {"kind":"state","state":"menu"}` and `stable_frames:30`,
+under a declared timeout. This works on a basic bridge without sampled game state; it is an observed UI-state heuristic,
+not a freshness/controllability guarantee. A `controllable` predicate correctly remains unsupported without fresh samples.
+Input refuses boot/intro/loading/unknown or unpresented/stalled state before sending; release remains available for cleanup.
+Input Job events retain sanitized `bridge_request`/`bridge_reply` fields. The game gets the requested input timeout,
+with one additional second only for delivery of its deadline reply. A confirmed “no controller read” reply is distinguished
+from an uncertain partially consumed or disconnected mutation; no input is automatically replayed.
+
+For bounded shell observation, `job_wait` can wait up to 30 seconds per call; repeat only until your overall deadline.
+Read the existing readiness Job's result from `events.events`, not from the lifetime launch Job:
+
+```sh
+uv run --project mcp hookshot-wb call job_read --args "{\"job_id\":\"$JOB\",\"limit\":100}" |
+  jq '.events.events[] | select(.kind == "bridge_ready")'
+uv run --project mcp hookshot-wb call session_wait --args "{\"run_id\":\"$RUN\",\"predicate\":{\"kind\":\"state\",\"state\":\"menu\"},\"stable_frames\":30,\"timeout_seconds\":90,\"idempotency_key\":\"ui-ready\"}"
+# Set WAIT_JOB from that response; overall deadline remains the operator's bound.
+uv run --project mcp hookshot-wb call job_wait --args "{\"job_id\":\"$WAIT_JOB\",\"timeout_seconds\":30}"
+uv run --project mcp hookshot-wb call job_read --args "{\"job_id\":\"$WAIT_JOB\",\"limit\":100}" |
+  jq '.events.events[] | select(.kind == "result") | .data'
+```
+
+Require `matched:true` and a presented menu before input. After input, wait again for an appropriate drawing state before
+the shot; a present counter alone can still be black boot/loading output. If readiness does not arrive inside the owned
+run's remaining budget, stop and report it—do not press blindly or start another hold. Inspect the image afterward.
 
 The generated [CATALOGUE.md](CATALOGUE.md) names each shell replacement and whether the CLI needs the broker.
 Simple readers, catalogue, queues and retained comparisons are one-shot; they start no daemon. Live-session reads and

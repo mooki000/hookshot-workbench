@@ -167,6 +167,17 @@ class Registry:
         return db.execute("INSERT INTO events(job_id,observed_at,kind,data) VALUES (?,?,?,?)",
                           (job_id, utc_now(), kind, payload)).lastrowid
 
+    def find_job(self, operation: str, idempotency_key: str, request: dict) -> Job | None:
+        request_hash = hashlib.sha256(_json(request).encode()).hexdigest()
+        with self._db() as db:
+            row = db.execute("SELECT request_hash,document FROM jobs WHERE owner=? AND operation=? AND idem=?",
+                             (self.owner, operation, idempotency_key)).fetchone()
+            if row is None:
+                return None
+            if row["request_hash"] != request_hash:
+                raise fail("invalid_argument", "job_create")
+            return Job.model_validate_json(row["document"])
+
     def create_job(self, operation: str, *, idempotency_key: str | None = None,
                    request: dict | None = None, total_steps: int | None = None) -> Job:
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", operation):

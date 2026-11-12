@@ -178,6 +178,31 @@ class SessionService:
 
         return await start(job.job_id, run, cancel=cancel)
 
+    async def _input_ready(self, session):
+        bridge = await self.connection(session)
+        reply = await bridge.request("status", timeout=2)
+        frame = number(reply.get("frame"), integer=True)
+        state = text(reply.get("state"), 16)
+        if state not in {"menu", "play"} or frame is None or frame <= 0 or reply.get("stalled") is True:
+            self.deps.registry.append_event(session.launch_job, "input_refused",
+                {"state": state, "frame": frame, "sent": False, "reason": "not_ready"})
+            raise self.deps.error("unavailable", "session_input_not_ready", retryable=True)
+
+    def _input_trace(self, job_id, direction, packet):
+        fields = {}
+        for key in ("id", "ok", "frame", "start", "end", "queued", "frames", "timeout", "wait", "exclusive"):
+            if key in packet and type(packet[key]) in {int, float, bool}:
+                fields[key] = packet[key]
+        if packet.get("cmd") in {"sequence", "press", "stick", "release"}:
+            fields["cmd"] = packet["cmd"]
+        if direction == "request" and "steps" in packet:
+            fields["steps"] = packet["steps"]
+        if packet.get("error") in {"timeout", "bad_request", "busy", "unavailable", "refused", "cancelled"}:
+            fields["error"] = packet["error"]
+        if packet.get("message") in {"the game did not read the controller", "the inputs did not finish in time"}:
+            fields["message"] = packet["message"]
+        self.deps.registry.append_event(job_id, "bridge_" + direction, fields)
+
     async def input_impl(self, run_id, steps: list[InputStep], units: str, timeout_seconds: float, idempotency_key: str):
         session = self.owned(run_id)
         if not 1 <= len(steps) <= 64 or units not in {"frames", "hos"}:
@@ -190,14 +215,22 @@ class SessionService:
         except ValueError:
             raise self.deps.error("invalid_argument", "session_input") from None
         request = dict(run_id=run_id, steps=[s.model_dump() for s in steps], units=units, timeout_seconds=timeout_seconds)
+        previous = self.deps.registry.find_job("session_input", idempotency_key, request)
+        if previous is not None:
+            return previous
+        if not release:
+            await self._input_ready(session)
 
         async def action(job_id):
             if session.input_lock.locked():
                 raise self.deps.error("busy", "session_input")
             async with session.input_lock:
+                if not release:
+                    await self._input_ready(session)
                 bridge = await self.connection(session)
                 try:
                     reply = await bridge.request("release" if release else "sequence", timeout=timeout_seconds,
+                        trace=lambda direction, packet: self._input_trace(job_id, direction, packet),
                         **({} if release else {"steps": converted, "exclusive": True, "wait": True}))
                 except WorkbenchError as exc:
                     if exc.envelope.code == "uncertain_outcome":
@@ -222,6 +255,7 @@ class SessionService:
         deadline = start + timeout_seconds
         initial, stable_from = None, None
         sample = None
+        next_progress = 0.0
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0 and sample is not None:
@@ -256,8 +290,10 @@ class SessionService:
                         elapsed_ms=(time.monotonic()-start)*1000, reason="matched")
             else:
                 stable_from = None
-            if job_id and sample.frame is not None:
-                self.deps.registry.append_event(job_id, "sample", {"frame": sample.frame, "fresh": sample.fresh, "matched": bool(matched)})
+            if job_id and sample.frame is not None and time.monotonic() >= next_progress:
+                self.deps.registry.append_event(job_id, "sample", {"frame": sample.frame, "fresh": sample.fresh,
+                    "state": sample.state, "matched": bool(matched)})
+                next_progress = time.monotonic() + 1
             # Native present wait is observed progress, not a boot/readiness sleep.
             try:
                 await bridge.request("wait", timeout=max(0.01, min(0.25, deadline-time.monotonic())), event="present", frames=1)

@@ -65,7 +65,7 @@ class Bridge:
             self.pending.clear()
             self.writer.close()
 
-    async def request(self, command: str, *, timeout: float = 5, mutation: bool | None = None, **args) -> dict:
+    async def request(self, command: str, *, timeout: float = 5, mutation: bool | None = None, trace=None, **args) -> dict:
         if command not in COMMANDS or not math.isfinite(timeout) or not 0 < timeout <= 120:
             raise fail("invalid_argument", "session_bridge")
         operation = "session_" + command
@@ -83,23 +83,37 @@ class Bridge:
         future = asyncio.get_running_loop().create_future()
         self.pending[rid] = future
         sent = False
+        def observe(direction, message):
+            if trace is not None:
+                try:
+                    trace(direction, message)
+                except Exception:
+                    pass  # Journal failure must not turn a known reply into a replay.
         try:
-            async with asyncio.timeout(timeout):
+            # The game's timeout reply is emitted at its deadline. Allow bounded
+            # delivery time instead of expiring the socket at the same instant.
+            async with asyncio.timeout(timeout + (1 if command in {"sequence", "press", "stick"} else 0)):
                 async with self._write_lock:
                     sent = True
+                    observe("request", json.loads(payload))
                     self.writer.write(payload)
                     await self.writer.drain()
                 reply = await future
+            if reply is not None:
+                observe("reply", reply)
             if reply is None:
                 raise fail("uncertain_outcome" if mutating else "unavailable", operation)
             if reply.get("ok") is not True:
                 code = reply.get("error")
+                if code == "timeout" and command in {"sequence", "press", "stick"} and reply.get("message") == "the game did not read the controller":
+                    raise fail("unavailable", "session_input_not_consumed", retryable=True)
                 mapped = {"unknown_cmd": "unavailable", "unavailable": "unavailable", "busy": "busy",
                           "refused": "refused_by_policy", "forbidden": "refused_by_policy", "not_found": "not_found",
                           "bad_request": "invalid_argument", "timeout": "uncertain_outcome" if mutating else "timeout"}
                 raise fail(mapped.get(code, "uncertain_outcome" if mutating else "backend_failed"), operation)
             return reply
         except (TimeoutError, OSError):
+            observe("transport_timeout", {"cmd": command, "id": rid})
             raise fail("uncertain_outcome" if mutating and sent else "timeout", operation) from None
         finally:
             self.pending.pop(rid, None)

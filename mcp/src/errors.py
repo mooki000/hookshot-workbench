@@ -13,6 +13,10 @@ ACTIONS = {
     "uncertain_outcome": "Reconcile the existing attempt; do not replay the mutation.",
     "backend_failed": "Inspect local operator diagnostics; do not replay a mutation.",
 }
+INPUT_ACTIONS = {
+    "session_input_not_ready": "No input was sent. Wait for a presented menu or play state with session_wait, then inspect session_state.",
+    "session_input_not_consumed": "The bridge reports no controller read and dropped this input. Wait for menu or play before a deliberate new attempt.",
+}
 
 
 class WorkbenchError(ToolError):
@@ -23,7 +27,7 @@ class WorkbenchError(ToolError):
         operation = operation if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", operation) else "request"
         self.envelope = ErrorEnvelope(code=code, operation=operation,
             retryable=retryable, retry_after_seconds=retry_after_seconds,
-            operator_action=ACTIONS[code])
+            operator_action=INPUT_ACTIONS.get(operation, ACTIONS[code]))
         super().__init__(self.envelope.model_dump_json())
 
 

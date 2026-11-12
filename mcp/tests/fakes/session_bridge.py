@@ -18,6 +18,8 @@ class FakeBridge:
         self.path = Path(path)
         self.server = None
         self.frame = 10
+        self.state = "play"
+        self.controller_reads = True
         self.map = "SyntheticZone"
         self.age = "child"
         self.loading = False
@@ -81,20 +83,26 @@ class FakeBridge:
         cmd, rid = command["cmd"], command["id"]
         self.frame += 1
         response = {"id": rid, "ok": True, "frame": self.frame}
-        await self.emit(writer, {"event": "present", "frame": self.frame, "state": "play"})
+        await self.emit(writer, {"event": "present", "frame": self.frame, "state": self.state})
         if cmd == "status":
             game = {"map": self.map, "age": self.age, "loading": self.loading, "event": self.event}
             if self.sampled:
                 game.update(frame=self.frame, t=time.monotonic()-(10 if self.stale else 0))
-            response.update(protocol=1, state="play", map=self.map, game=game)
+            response.update(protocol=1, state=self.state, map=self.map, game=game)
         elif cmd == "wait":
             await asyncio.sleep(0.01)
             self.frame += 1
             response.update(frame=self.frame, waited=1)
         elif cmd in {"sequence", "press", "stick"}:
-            await asyncio.sleep(self.delay)
-            duration = max((step["at"]+step["frames"] for step in command.get("steps", [])), default=8)
-            response.update(start=self.frame, end=self.frame+duration)
+            timeout = command.get("timeout", 30)
+            if not self.controller_reads or self.delay > timeout:
+                await asyncio.sleep(timeout + 0.01)  # Real bridge ticks after its deadline.
+                response.update(ok=False, error="timeout", message="the game did not read the controller"
+                    if not self.controller_reads else "the inputs did not finish in time")
+            else:
+                await asyncio.sleep(self.delay)
+                duration = max((step["at"]+step["frames"] for step in command.get("steps", [])), default=8)
+                response.update(start=self.frame, end=self.frame+duration)
         elif cmd == "release":
             response.update(released=1, all=False)
         elif cmd == "shot":
