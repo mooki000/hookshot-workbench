@@ -744,5 +744,223 @@ class StorageTests(unittest.TestCase):
             self.assertNotIn("must not be reached", result.stderr)
 
 
+    def test_carry_without_config_never_initializes_network_defaults(self):
+        error = io.StringIO()
+        with patch.object(loop.Backend, "authors", side_effect=AssertionError("carry must not use GitHub API")), \
+             patch.object(loop, "clock", return_value=NOW), contextlib.redirect_stderr(error):
+            status = loop.main(["--state-dir", str(self.directory), "carry", "2566", "--from", HEAD, "--to", NEW])
+        self.assertEqual(status, 2)
+        self.assertIn("initialized config and scan", error.getvalue())
+        self.assertFalse((self.directory / "config.json").exists())
+        self.assertFalse((self.directory / "state.json").exists())
+
+
+class CarryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix=".pr-loop-carry-", dir=Path(__file__).parent)
+        self.directory = Path(self.temp.name)
+        self.addCleanup(self.temp.cleanup)
+        environment = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(self.directory), "LC_ALL": "C",
+            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+            "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+            "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
+        }
+        environment_patch = patch.dict(os.environ, environment, clear=True)
+        environment_patch.start()
+        self.addCleanup(environment_patch.stop)
+        self.repo = self.directory / "repo"
+        self.repo.mkdir()
+        self.git("init", "--quiet", "--initial-branch=main")
+        (self.repo / "feature.txt").write_text("".join(f"line {n}\n" for n in range(40)))
+        (self.repo / "main.txt").write_text("base\n")
+        self.base = self.commit("base")
+        self.git("checkout", "--quiet", "-b", "topic")
+        self.line(1, "feature one")
+        self.commit("one")
+        self.line(10, "feature two")
+        self.old = self.commit("two")
+        self.git("checkout", "--quiet", "main")
+        (self.repo / "main.txt").write_text("main update one\n")
+        self.commit("main one")
+        (self.repo / "other.txt").write_text("main update two\n")
+        self.new_base = self.commit("main two")
+        self.git("update-ref", "refs/remotes/origin/main", self.new_base)
+        self.git("checkout", "--quiet", "-b", "rebased", self.old)
+        self.git("rebase", "--onto", "main", self.base)
+        self.new = self.git("rev-parse", "HEAD").strip()
+        self.config = loop.defaults([], "fixture", NOW)
+        self.own = event(2566, body="Built " + self.old + "; checks pass.", commit=self.old)
+        self.state = snapshot(pr(2566, head=self.old))
+        loop.take(self.state, self.config, 2566, EARLIER)
+        loop.reviewed(self.state, 2566, self.old, "Fixture executable diff read.", EARLIER)
+        self.state["snapshot"]["prs"]["2566"]["events"] = [self.own]
+        loop.tested(self.state, self.config, 2566, self.old, "pass", self.own["url"], EARLIER)
+        self.move_head(self.new)
+        self.state_dir = self.directory / "state"
+        self.state_dir.mkdir()
+        loop.atomic_json(self.state_dir / "config.json", self.config)
+        loop.atomic_json(self.state_dir / "state.json", self.state)
+
+    def git(self, *arguments, repo=None, check=True):
+        command = ["git", "-C", str(repo or self.repo), "-c", "core.hooksPath=/dev/null",
+                   "-c", "commit.gpgsign=false", "-c", "core.fsmonitor=false", *arguments]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=20)
+        if check:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout if check else result
+
+    def line(self, index, value):
+        path = self.repo / "feature.txt"
+        lines = path.read_text().splitlines(keepends=True)
+        lines[index] = value + "\n"
+        path.write_text("".join(lines))
+
+    def commit(self, message):
+        self.git("add", "--", ".")
+        self.git("commit", "--quiet", "-m", message)
+        return self.git("rev-parse", "HEAD").strip()
+
+    def move_head(self, head):
+        loop.scan(self.state, self.config, FakeBackend([pr(2566, head=head, events=[self.own],
+                                                        files=["feature.txt"])]), NOW)
+
+    def cli(self, *arguments):
+        out, err = io.StringIO(), io.StringIO()
+        with patch.object(loop, "CLONE", self.repo), patch.object(loop, "clock", return_value=NOW), \
+             contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = loop.main(["--state-dir", str(self.state_dir), *arguments])
+        return status, out.getvalue(), err.getvalue()
+
+    def assert_refused(self, head, text, from_head=None):
+        self.move_head(head)
+        loop.atomic_json(self.state_dir / "state.json", self.state)
+        before = (self.state_dir / "state.json").read_bytes()
+        status, _, error = self.cli("carry", "2566", "--from", from_head or self.old, "--to", head)
+        self.assertEqual(status, 2)
+        self.assertIn(text, error)
+        self.assertEqual((self.state_dir / "state.json").read_bytes(), before)
+        self.assertNotIn("carry", self.state["active"]["2566"])
+
+    def test_identical_rebase_carries_without_rewriting_actual_test(self):
+        before = copy.deepcopy(self.state["active"]["2566"])
+        status, out, error = self.cli("carry", "2566", "--from", self.old, "--to", self.new)
+        self.assertEqual(status, 0, error)
+        state = loop.read_json(self.state_dir / "state.json")
+        record = state["active"]["2566"]
+        proof = record["carry"]
+        self.assertEqual((proof["from_head"], proof["to_head"]), (self.old, self.new))
+        self.assertEqual((proof["from_base"], proof["to_base"]), (self.base, self.new_base))
+        self.assertEqual((proof["main_commits"], proof["patch_commits"]), (2, 2))
+        self.assertEqual(proof["main_head"], self.new_base)
+        self.assertEqual(proof["range_diff"].count(" = "), 2)
+        for field in ("last_tested_head", "last_tested_at", "verdict", "comment_url", "code_review"):
+            self.assertEqual(record[field], before[field])
+        label = f"tested at {self.old}, carried to {self.new} (identical patches, 2 main commits apart)"
+        self.assertIn(label, out)
+        self.assertFalse(record["head_moved"])
+        self.assertEqual(record["wait_for"], "maintainer")
+        self.assertEqual(loop.next_action(state, self.config, NOW)["action"], "wait")
+        for command in ("next", "report"):
+            status, text, error = self.cli(command)
+            self.assertEqual(status, 0, error)
+            self.assertIn(label, text)
+            self.assertNotIn("retest #2566", text)
+        # A fresh scan must not forget the carry and offer the same redundant test.
+        loop.scan(state, self.config, FakeBackend([pr(2566, head=self.new, events=[self.own])]), NOW)
+        self.assertFalse(state["active"]["2566"]["head_moved"])
+        self.assertEqual(loop.next_action(state, self.config, NOW)["action"], "wait")
+        loop.validate_state(state)
+
+    def test_amended_commit_is_refused_without_recording(self):
+        parent = self.git("rev-parse", self.new + "^").strip()
+        self.git("checkout", "--quiet", "-b", "amended", parent)
+        self.line(10, "amended feature two")
+        amended = self.commit("two")
+        self.assert_refused(amended, "range-diff has changed")
+
+    def test_added_commit_is_refused_without_recording(self):
+        self.line(20, "extra feature")
+        added = self.commit("extra")
+        self.assert_refused(added, "added/dropped commits (2 before, 3 after)")
+
+    def test_dropped_commit_is_refused_without_recording(self):
+        dropped = self.git("rev-parse", self.new + "^").strip()
+        self.assert_refused(dropped, "added/dropped commits (2 before, 1 after)")
+
+    def test_main_file_intersection_is_refused_even_when_patches_equal(self):
+        self.git("checkout", "--quiet", "main")
+        self.line(39, "main changed this distant line")
+        newer_base = self.commit("main touches feature file")
+        self.git("update-ref", "refs/remotes/origin/main", newer_base)
+        self.git("checkout", "--quiet", "-b", "intersecting", self.old)
+        self.git("rebase", "--onto", "main", self.base)
+        intersecting = self.git("rev-parse", "HEAD").strip()
+        self.assert_refused(intersecting, "PR files intersect main's changes between bases; re-test: feature.txt")
+
+    def test_main_file_changed_then_reverted_still_intersects(self):
+        self.git("checkout", "--quiet", "main")
+        self.line(39, "temporary main change")
+        self.commit("main changes feature file")
+        self.line(39, "line 39")
+        newer_base = self.commit("main restores feature file")
+        self.git("update-ref", "refs/remotes/origin/main", newer_base)
+        self.git("checkout", "--quiet", "-b", "restored", self.old)
+        self.git("rebase", "--onto", "main", self.base)
+        restored = self.git("rev-parse", "HEAD").strip()
+        self.assert_refused(restored, "PR files intersect main's changes between bases; re-test: feature.txt")
+
+    def test_later_real_head_move_asks_for_retest_again(self):
+        loop.carry(self.state, 2566, self.old, self.new, NOW, clone=self.repo)
+        self.line(20, "real new change")
+        newer = self.commit("real change")
+        self.move_head(newer)
+        record = self.state["active"]["2566"]
+        self.assertTrue(record["head_moved"])
+        self.assertEqual(loop.effective_tested_head(record), self.new)
+        self.assertEqual(record["last_tested_head"], self.old)
+        self.assertEqual(loop.next_action(self.state, self.config, NOW)["action"], "diff-review")
+        loop.reviewed(self.state, 2566, newer, "Read the genuinely new change.", NOW)
+        chosen = loop.next_action(self.state, self.config, NOW)
+        self.assertEqual(chosen["action"], "retest")
+        self.assertIn(f"from {self.new} to {newer}", chosen["why"])
+
+    def test_missing_commits_are_fetched_only_as_objects(self):
+        clone = self.directory / "clone"
+        self.git("clone", "--quiet", "--no-local", "--single-branch", "--branch", "main", str(self.repo), str(clone))
+        for head in (self.old, self.new):
+            self.assertNotEqual(self.git("cat-file", "-e", head + "^{commit}", repo=clone, check=False).returncode, 0)
+        original_head = self.git("rev-parse", "HEAD", repo=clone)
+        fetch_head = clone / ".git" / "FETCH_HEAD"
+        original_fetch = fetch_head.read_bytes() if fetch_head.exists() else None
+        with patch.object(loop, "git_read", wraps=loop.git_read) as reads:
+            loop.carry(self.state, 2566, self.old, self.new, NOW, clone=clone)
+        fetched = [call.args[-1] for call in reads.call_args_list if call.args[1] == "fetch"]
+        self.assertEqual(set(fetched), {self.old, self.new})
+        self.assertEqual(self.git("rev-parse", "HEAD", repo=clone), original_head)
+        self.assertEqual(fetch_head.read_bytes() if fetch_head.exists() else None, original_fetch)
+        self.assertFalse(any(call.args[1] in ("checkout", "rebase", "reset") for call in reads.call_args_list))
+
+    def test_carry_requires_the_actually_tested_source_head(self):
+        self.assert_refused(self.new, "actually tested head", from_head=self.base)
+
+    def test_carry_preserves_an_owed_reply(self):
+        self.state["active"]["2566"]["wait_for"] = "our-reply"
+        loop.carry(self.state, 2566, self.old, self.new, NOW, clone=self.repo)
+        self.assertEqual(loop.next_action(self.state, self.config, NOW)["action"], "reply")
+
+    def test_a_real_test_replaces_carry_without_losing_the_new_test(self):
+        loop.carry(self.state, 2566, self.old, self.new, NOW, clone=self.repo)
+        newer_result = event(2566, at=NOW, body="Built " + self.new + "; checks pass.", commit=self.new,
+                             id="comment:2", url=f"https://github.com/{loop.REPO}/pull/2566#issuecomment-2")
+        self.state["snapshot"]["prs"]["2566"]["events"].append(newer_result)
+        loop.tested(self.state, self.config, 2566, self.new, "pass", newer_result["url"], NOW)
+        record = self.state["active"]["2566"]
+        self.assertNotIn("carry", record)
+        self.assertEqual(record["last_tested_head"], self.new)
+        loop.validate_state(self.state)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

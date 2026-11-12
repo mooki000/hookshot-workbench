@@ -93,6 +93,76 @@ def driver_arguments(root, args):
 
 
 
+# MSVC diagnoses these even when the local MinGW headers leave their annotations off.
+CRT_UNSAFE_CALLS = {
+    'getenv', '_wgetenv', 'fopen', '_wfopen', 'freopen', '_wfreopen',
+    'strcpy', 'strcat', 'strncpy', 'strncat', 'wcscpy', 'wcscat', 'wcsncpy', 'wcsncat',
+    'memcpy', 'memmove', 'wmemcpy', 'wmemmove',
+    'sprintf', 'vsprintf', 'swprintf', 'vswprintf', 'scanf', 'fscanf', 'sscanf',
+    'vscanf', 'vfscanf', 'vsscanf', 'wscanf', 'fwscanf', 'swscanf',
+    'gets', '_getws', 'strtok', 'wcstok', 'asctime', 'ctime', 'gmtime', 'localtime',
+    '_itoa', '_ltoa', '_ultoa', '_i64toa', '_ui64toa', '_putenv', '_wputenv',
+    'tmpnam', '_wtmpnam', 'tempnam', '_wtempnam', 'tmpfile', 'mbstowcs', 'wcstombs',
+}
+
+
+def crt_policy(source, argv):
+    """Require a source/command-line opt-out before headers, not one supplied by this checker.
+
+    This is a conservative lexical rule, not a C preprocessor. Conditional defines do
+    not prove the macro is enabled. Forced includes precede source-file directives.
+    """
+    text = source.read_text(encoding='utf-8', errors='replace')
+    # Keep literals while removing comments, so include names remain available.
+    tokens = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+    clean = tokens.sub(lambda m: '\n' * m.group().count('\n') if m.group().startswith(('/', '/*')) else m.group(), text)
+    includes = list(re.finditer(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', clean, re.M))
+    code = tokens.sub(lambda m: ' ' * len(m.group()), clean)
+    calls = sorted(set(re.findall(r'\b(' + '|'.join(sorted(CRT_UNSAFE_CALLS)) + r')\s*\(', code)))
+    macro, enabled, forced, i = '_CRT_SECURE_NO_WARNINGS', False, [], 1
+    while i < len(argv):
+        arg = str(argv[i])
+        if arg in ('-D', '-U', '-include', '-imacros') and i + 1 < len(argv):
+            value = str(argv[i + 1])
+            if arg in ('-include', '-imacros'):
+                forced.append(value)
+            elif value.split('=', 1)[0] == macro:
+                enabled = arg == '-D'
+            i += 2
+        else:
+            if arg.startswith(('-D', '-U')) and arg[2:].split('=', 1)[0] == macro:
+                enabled = arg.startswith('-D')
+            elif arg.startswith('-include') and arg != '-include':
+                forced.append(arg[len('-include'):])
+            i += 1
+    env_header = any(Path(name.replace('\\', '/')).name == 'hookshot_env.h'
+                     for name in [m.group(1) for m in includes] + forced)
+    if not calls and not env_header:
+        return []
+    if not forced:
+        prefix = clean[:includes[0].start()] if includes else clean
+        depth = 0
+        for line in prefix.splitlines():
+            directive = re.match(r'^\s*#\s*(\w+)\b(.*)', line)
+            if not directive:
+                continue
+            command, rest = directive.groups()
+            if command in ('if', 'ifdef', 'ifndef'):
+                depth += 1
+            elif command == 'endif':
+                depth = max(0, depth - 1)
+            elif re.match(r'\s+' + macro + r'(?:\s|$)', rest):
+                if command == 'undef':
+                    enabled = False
+                elif command == 'define' and depth == 0:
+                    enabled = True
+    if enabled:
+        return []
+    uses = ', '.join((['hookshot_env.h'] if env_header else []) + calls)
+    return [f'CRT policy: {source.name} uses {uses}; define {macro} before the first include '
+            '(or in compiler flags before forced includes). Conditional/late defines are not sufficient.']
+
+
 def compile_args(argv, source, compiler, sysroot):
     """Preserve all compile flags; remove only link/output/other input arguments."""
     kept = []
@@ -116,8 +186,10 @@ def compile_args(argv, source, compiler, sysroot):
         kept.append(a)
         i += 1
     cxx_headers = ['-nostdinc++', '-isystem', str(sysroot / 'include/c++/v1')] if '++' in compiler else []
+    # MinGW makes the MSVC compatibility annotations opt-in; -Werror alone cannot see them.
+    crt_warnings = ['-D__MINGW_MSVC_COMPAT_WARNINGS=1', '-Werror=deprecated-declarations']
     return [compiler, '--target=x86_64-w64-mingw32', '--sysroot=' + str(sysroot),
-            *cxx_headers, '-isystem', str(sysroot / 'include'), *kept, '-fsyntax-only', str(source)]
+            *cxx_headers, '-isystem', str(sysroot / 'include'), *kept, *crt_warnings, '-fsyntax-only', str(source)]
 
 
 def child(root, test, out, sysroot):
@@ -156,6 +228,7 @@ def child(root, test, out, sysroot):
                 '-x' in argv and '++' in argv[argv.index('-x') + 1])
             compiler = shutil.which('clang++' if cxx else 'clang')
             target = compile_args(argv, source, compiler, sysroot)
+            policy_errors = crt_policy(source, argv)
             subprocess.Popen = original_popen
             try:
                 r = original_run(target, cwd=cwd, text=True, capture_output=True, timeout=90)
@@ -165,8 +238,9 @@ def child(root, test, out, sysroot):
             saved = out / ('%03d-' % number + source.name)
             shutil.copyfile(source, saved)
             records.append({'source': str(source), 'saved': str(saved), 'original': argv, 'command': target,
-                            'status': 'FAIL' if r.returncode else 'PASS', 'returncode': r.returncode,
-                            'diagnostics': r.stdout + r.stderr})
+                            'status': 'FAIL' if r.returncode or policy_errors else 'PASS', 'returncode': r.returncode,
+                            'crt_policy_errors': policy_errors,
+                            'diagnostics': r.stdout + r.stderr + ''.join(error + '\n' for error in policy_errors)})
         # This is compile capture only. Execution is never replaced with a fake success.
         # Continue collecting other compile calls even if one Windows compile failed.
         return subprocess.CompletedProcess(argv, 0, '' if kwargs.get('text') else b'', '' if kwargs.get('text') else b'')

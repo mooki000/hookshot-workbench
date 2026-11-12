@@ -246,6 +246,46 @@ The tool recognises stored tests and explicit own "Built/Tested <sha>" comments 
 can prevent a duplicate run. Other prose still needs the full-thread reading; never infer an exact tested head from
 a comment's date or the request's result alone, because the author may have pushed since.
 
+## Carrying a result across an identical rebase
+
+Use `carry` only when the author rebased the same patches onto newer main, because a new commit hash alone need not
+justify another build and GPU slot. Read the new description/thread and scan first, because a carry must name the
+currently observed PR head, not a stale branch. Never use `tested` for a head that was not actually built, because
+that would invent evidence:
+
+```sh
+python3 -I -B ~/.agents/skills/hookshot-pr-loop/scripts/pr_loop.py carry <pr> --from <full-actually-tested-sha> --to <full-new-head-sha>
+```
+
+The command verifies the claim itself in `/home/mooki/Code/Hookshot`, because an author's \"just rebased\" message
+is not a proof. It freezes the local `origin/main`, obtains each head's unique merge-base against it, and requires
+the new base to descend from the old one. It runs `git range-diff` over those two base-to-head ranges and requires
+equal non-zero commit counts with every commit paired exactly once as `=`, because changed, added or dropped
+commits are new work. A range-diff that omits a merge or has unreadable output is refused, because incomplete
+comparison cannot establish equivalence.
+
+It also compares the PR's changed files on both ranges with every file changed by main's commits between the bases,
+including a main change later reverted, because a same-file interaction warrants a re-test even when the PR's
+patches compare equal. A refusal lists intersecting files and leaves the state unchanged. Do not bypass that refusal,
+because the carry is a narrow exception, not a substitute for integration testing the main session wants.
+
+Only absent head commits may be fetched from `origin`, as objects without a checkout or a `FETCH_HEAD` update,
+because proof does not require running either PR or changing a working tree. There is no network call besides
+that read-only fetch and no token lookup; Git handles its own fetch access. The existing clone must already have
+`origin/main`, because carry does not silently choose or refresh the comparison's main history.
+
+The record keeps the actual tested head, test date, verdict and comment unchanged, and stores a separate proof with
+both heads, both merge-bases, the frozen main head, the patch count, the number of commits main gained between the
+bases and the range-diff summary, because the next reader must distinguish measured evidence from carried evidence.
+`next` and `report` say `tested at <old>, carried to <new> (identical patches, N main commits apart)` and stop offering
+that redundant re-test. Owed replies remain owed, because equivalence does not answer another person.
+
+A later head move becomes a re-test obligation again unless another carry is independently verified, because one
+proof covers one target head only. Always use the last **actually tested** head as `--from`, even for a second carry,
+because that checks the full intervening main history. A new real `tested` result replaces the carry, because it
+provides direct evidence again. Carry does not claim that newer main was played or measured, and a performance number
+still names the old tested build, because identical patches are not a fresh runtime measurement.
+
 ## Leaving the loop and local files
 
 Merged and closed PRs move automatically to `done` with the observed date, because they no longer need a new build.
@@ -259,8 +299,9 @@ is not permission to pester. `take --reopen` is an explicit return from `parked`
 silently undo a decision to stop.
 
 `state.json` retains one record per taken PR across `active`, `done`, `parked`: author, tier, admission reason, request
-ID, current and tested heads, test date/verdict/comment, wait and start time, claim times/status, and the last 30
-history entries. Full latest tracker snapshots remain local, because they are routing data, not public evidence.
+ID, current and tested heads, test date/verdict/comment, optional separately verified carry proof, wait and start time,
+claim times/status, and the last 30 history entries. Full latest tracker snapshots remain local, because they are
+routing data, not public evidence.
 Atomic replacement and a non-blocking `flock` protect every command, because two agents must not overwrite each
 other. A corrupt state/config is refused rather than reset, because losing an owed reply is worse than stopping.
 The lock covers commands, not an hours-long build; keep one main coordinator, because a filesystem lock is not a GPU
@@ -283,10 +324,13 @@ or test claim. Do not delete the lock file, because that could create two indepe
 ## Tool checks and change note
 
 Run `python3 -I -B ~/.agents/skills/hookshot-pr-loop/scripts/test_pr_loop.py` when assigned to verify this tool,
-because its stood-in GitHub and request fixtures exercise ordering, exclusions, claims, closures, state safety and
-priority edits without using the network or the game. Temporary fixtures stay inside the skill folder and are
-removed by the tests. Initial version, 2026-11-12: local queue, main-session diff-review gate, five-author fair
+because its stood-in GitHub/request fixtures and small throwaway Git repositories exercise ordering, exclusions,
+claims, closures, state safety, priority edits and identical-rebase carries without external network or game access.
+Temporary fixtures stay inside the skill folder and are removed by the tests. Initial version, 2026-11-12:
+local queue, main-session diff-review gate, five-author fair
 rotation, validated priority edits, read-only request adapter and atomic state; no autonomous posting or claiming.
 Correction, 2026-11-12: unapproved cards gate claims, not priority PRs; later approval offers claim/done attachment
 of existing results, and `--why` opts into the full exclusion list, because independent testing and concise next
 actions were the user's intended policy.
+Addition, 2026-11-12: `carry` verifies patch identity and rejects intersecting main changes while preserving the
+actually tested head, because an unchanged rebase should not create either a redundant run or a false test claim.

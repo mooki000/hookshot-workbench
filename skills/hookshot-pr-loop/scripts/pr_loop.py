@@ -16,6 +16,7 @@ import tempfile
 REPO = "NotRexed/Hookshot"
 STATE_DIR = Path("/home/mooki/Games/.hookshot-harness/pr-loop")
 CHECKOUT = "/home/mooki/Code/hookshot-wt/main-tools"
+CLONE = Path("/home/mooki/Code/Hookshot")
 TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_GROUP = ["nullifyshot", "hckrman101", "sadtransgirl", "klimovich008", "madebyjordan"]
 WAITS = ("author-reply", "new-commits", "maintainer", "our-test", "our-reply")
@@ -185,6 +186,16 @@ def validate_state(state):
                 require(SHA.fullmatch(record["last_tested_head"]) is not None and
                         record["verdict"] in VERDICTS and record["comment_url"], "invalid tested record")
                 epoch(record["last_tested_at"])
+            if record.get("carry") is not None:
+                proof = record["carry"]
+                require(isinstance(proof, dict) and all(isinstance(proof.get(k), str) and SHA.fullmatch(proof[k])
+                        for k in ("from_head", "to_head", "from_base", "to_base", "main_head")), "invalid carry heads/bases")
+                require(proof["from_head"] == record["last_tested_head"] and proof["to_head"] != proof["from_head"],
+                        "carry must start at the actually tested head")
+                require(type(proof.get("patch_commits")) is int and proof["patch_commits"] > 0
+                        and type(proof.get("main_commits")) is int and proof["main_commits"] >= 0
+                        and isinstance(proof.get("range_diff"), str), "invalid carry proof")
+                epoch(proof.get("at"))
             if record["claim"] is not None:
                 require(isinstance(record["claim"], dict) and
                         record["claim"].get("status") in ("active", "expired", "released", "finished"), "invalid claim")
@@ -483,6 +494,24 @@ def comment_url(url, number):
                             + r"#(?:issuecomment-\d+|pullrequestreview-\d+|discussion_r\d+)", url))
 
 
+def effective_tested_head(record):
+    proof = record.get("carry")
+    return proof["to_head"] if proof else record["last_tested_head"]
+
+
+def carry_label(record):
+    proof = record.get("carry")
+    if not proof:
+        return ""
+    return (f"tested at {proof['from_head']}, carried to {proof['to_head']} "
+            f"(identical patches, {proof['main_commits']} main commits apart)")
+
+
+def record_reason(record):
+    carried = carry_label(record)
+    return record["why"]["text"] + ("; " + carried if carried else "")
+
+
 def candidate(pr, state, config, requests=None, review=None):
     reasons = []
     key = str(pr["number"])
@@ -502,7 +531,9 @@ def candidate(pr, state, config, requests=None, review=None):
     if parked:
         reasons.append("author says to hold off: " + parked)
     tested = own_test(pr, config["user"])
-    if record and record["last_tested_head"] == pr["head"] or tested:
+    if record and effective_tested_head(record) == pr["head"] and record.get("carry"):
+        reasons.append("tested result carried: " + carry_label(record))
+    elif record and record["last_tested_head"] == pr["head"] or tested:
         reasons.append("user already tested this head" + (": " + tested["url"] if tested else ""))
     requests = requests if requests is not None else (state["snapshot"] or {}).get("requests", [])
     linked = [r for r in requests if r.get("pr") == pr["number"] and r.get("status") == "open"]
@@ -634,7 +665,8 @@ def refresh_record(record, pr, snapshot, config, now):
                      "@" + config["user"].lower() in e["body"].lower())
                 and (e["body"].strip() or e["state"] == "CHANGES_REQUESTED")]
     record["new_events"] = [{k: e[k] for k in ("id", "author", "at", "url", "kind")} for e in incoming]
-    record["head_moved"] = bool(record["last_tested_head"] and record["last_tested_head"] != pr["head"])
+    covered = effective_tested_head(record)
+    record["head_moved"] = bool(covered and covered != pr["head"])
     if incoming:
         set_wait(record, "our-reply", now)
         record["unanswered_cycles"] = 0
@@ -815,7 +847,7 @@ def result_actions(state, config, now):
     for record in sorted(state["active"].values(), key=lambda r: (r["wait_since"], r["number"])):
         pr = snapshot["prs"][str(record["number"])]
         if (pr["state"] != "OPEN" or pr.get("scan_error") or parked_description(pr)
-                or record["last_tested_head"] != pr["head"] or record["verdict"] not in VERDICTS
+                or effective_tested_head(record) != pr["head"] or record["verdict"] not in VERDICTS
                 or not record["comment_url"]):
             continue
         for request in eligible_requests(record, snapshot, config):
@@ -824,15 +856,17 @@ def result_actions(state, config, now):
             if held - {request["id"]}:
                 continue
             common = {"request_id": request["id"], "verdict": record["verdict"],
-                      "comment": record["comment_url"], "head": record["last_tested_head"]}
+                      "comment": record["comment_url"], "head": record["last_tested_head"],
+                      "covered_head": effective_tested_head(record)}
+            carried = "; " + carry_label(record) if record.get("carry") else ""
             if request["id"] in held:
                 actions.append(action("done-result", record["number"],
                     f"main runs done {request['id']} --result {record['verdict']} --comment {record['comment_url']}; "
-                    "attach the existing result, no new test", **common))
+                    "attach the existing result, no new test" + carried, **common))
             else:
                 actions.append(action("claim-result", record["number"],
                     f"{request['id']} is now approved; main claims it, then marks done with the existing "
-                    f"{record['verdict']} result {record['comment_url']}; confirm the request's scope, no new test", **common))
+                    f"{record['verdict']} result {record['comment_url']}; confirm the request's scope, no new test" + carried, **common))
     return actions
 
 
@@ -861,7 +895,7 @@ def next_action(state, config, now):
                        and c["request_id"] == request_id for c in claims)
             if request_id and not held:
                 return action("claim", record["number"], request_id + " must be claimed again before the re-test; --again only for a changed head")
-            return action("retest", record["number"], f"head moved from {record['last_tested_head']} to {record['head']}; read the description/thread before building")
+            return action("retest", record["number"], f"head moved from {effective_tested_head(record)} to {record['head']}; read the description/thread before building")
     for claim in claims:
         left = epoch(claim["expires_at"]) - epoch(now)
         if claim["status"] == "expired" or left <= 0:
@@ -975,6 +1009,109 @@ def reviewed(state, number, head, note, now):
     history(record, now, "reviewed", head + ": " + note.strip())
 
 
+def git_read(clone, *arguments, accepted=(0,)):
+    # No checkout, diff helper, hook, replacement object or maintenance program is needed for this proof.
+    command = ["git", "--no-replace-objects", "-C", os.fspath(clone),
+               "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
+               "-c", "gc.auto=0", "-c", "maintenance.auto=false", *arguments]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, errors="surrogateescape", timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LoopError("carry Git read failed: " + str(error)) from error
+    require(result.returncode in accepted, "carry Git read failed (" + arguments[0] + "): "
+            + clean(result.stderr or result.stdout or f"exit {result.returncode}"))
+    return result
+
+
+def verify_carry(clone, from_head, to_head, now):
+    """Prove patch identity and disjoint main changes without running either checkout."""
+    main_head = git_read(clone, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}").stdout.strip()
+    require(SHA.fullmatch(main_head) is not None, "carry needs a valid local origin/main")
+    for head in (from_head, to_head):
+        present = git_read(clone, "cat-file", "-e", head + "^{commit}", accepted=(0, 1, 128))
+        if present.returncode:
+            git_read(clone, "fetch", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules", "origin", head)
+            git_read(clone, "cat-file", "-e", head + "^{commit}")
+    bases = []
+    for head in (from_head, to_head):
+        found = git_read(clone, "merge-base", "--all", main_head, head).stdout.splitlines()
+        require(len(found) == 1 and SHA.fullmatch(found[0]) is not None,
+                "carry refused: no unique merge-base against origin/main; re-test")
+        bases.append(found[0])
+    from_base, to_base = bases
+    forward = git_read(clone, "merge-base", "--is-ancestor", from_base, to_base, accepted=(0, 1))
+    require(forward.returncode == 0, "carry refused: the new base is not a forward main update; re-test")
+    old_range, new_range = from_base + ".." + from_head, to_base + ".." + to_head
+    old_commits = git_read(clone, "rev-list", "--reverse", old_range).stdout.splitlines()
+    new_commits = git_read(clone, "rev-list", "--reverse", new_range).stdout.splitlines()
+    require(old_commits and len(old_commits) == len(new_commits),
+            f"carry refused: added/dropped commits ({len(old_commits)} before, {len(new_commits)} after); re-test")
+    summary = git_read(clone, "range-diff", "--no-color", "--no-dual-color", "--no-ext-diff",
+                       "--no-textconv", "--no-patch", old_range, new_range).stdout
+    pattern = re.compile(r"^\s*(\d+|-):\s+([0-9a-f]+|-+)\s+([=!<>])\s+(\d+|-):\s+([0-9a-f]+|-+)(?:\s.*)?$")
+    seen_old, seen_new = set(), set()
+    for line in summary.splitlines():
+        if not line.strip():
+            continue
+        pair = pattern.fullmatch(line)
+        require(pair is not None, "carry refused: unrecognised range-diff output: " + clean(line))
+        left, old_sha, marker, right, new_sha = pair.groups()
+        require(marker == "=" and left != "-" and right != "-",
+                "carry refused: range-diff has changed, added or dropped commits: " + clean(line))
+        old_index, new_index = int(left), int(right)
+        require(1 <= old_index <= len(old_commits) and 1 <= new_index <= len(new_commits)
+                and old_index not in seen_old and new_index not in seen_new
+                and old_commits[old_index - 1].startswith(old_sha) and new_commits[new_index - 1].startswith(new_sha),
+                "carry refused: range-diff does not identify each commit exactly once")
+        seen_old.add(old_index)
+        seen_new.add(new_index)
+    require(len(seen_old) == len(old_commits) and len(seen_new) == len(new_commits),
+            "carry refused: range-diff does not cover every commit (including merges); re-test")
+
+    def paths(before, after):
+        value = git_read(clone, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff",
+                         "--no-textconv", before, after, "--").stdout
+        return {name for name in value.split("\0") if name}
+
+    pr_files = paths(from_base, from_head) | paths(to_base, to_head)
+    main_commits = git_read(clone, "rev-list", "--parents", from_base + ".." + to_base).stdout.splitlines()
+    main_files = set()
+    for commit in main_commits:
+        parents = commit.split()
+        if len(parents) > 1:
+            main_files.update(paths(parents[1], parents[0]))
+        else:
+            files = git_read(clone, "diff-tree", "--root", "--no-commit-id", "--name-only", "-z", "-r",
+                             "--no-renames", "--no-ext-diff", "--no-textconv", parents[0]).stdout
+            main_files.update(name for name in files.split("\0") if name)
+    overlap = sorted(pr_files & main_files)
+    require(not overlap, "carry refused: PR files intersect main's changes between bases; re-test: "
+            + ", ".join(clean(name) for name in overlap))
+    return {"at": now, "from_head": from_head, "to_head": to_head, "from_base": from_base, "to_base": to_base,
+            "main_head": main_head, "main_commits": len(main_commits), "patch_commits": len(old_commits), "range_diff": summary}
+
+
+def carry(state, number, from_head, to_head, now, clone=CLONE):
+    require_snapshot(state)
+    key = str(number)
+    require(key in state["active"], "carry requires a PR already in hand")
+    require(SHA.fullmatch(from_head) is not None and SHA.fullmatch(to_head) is not None,
+            "carry --from and --to need full 40-character commit SHAs")
+    record, pr = state["active"][key], state["snapshot"]["prs"][key]
+    require(from_head == record["last_tested_head"] and record["verdict"] in VERDICTS and record["comment_url"],
+            "carry --from must be the actually tested head with a recorded verdict and comment")
+    require(to_head != from_head and to_head != effective_tested_head(record), "result already covers that head")
+    require(pr["state"] == "OPEN" and not pr.get("scan_error") and pr["head"] == to_head,
+            "carry --to must match the open PR's complete scan; scan first")
+    proof = verify_carry(clone, from_head, to_head, now)
+    # All possible refusals above precede mutation; the actual test and its comment remain untouched.
+    record["carry"] = proof
+    record["head"], record["head_moved"] = to_head, False
+    if record["wait_for"] == "our-test":
+        set_wait(record, "maintainer" if record["verdict"] == "pass" else "new-commits", now)
+    history(record, now, "carry", carry_label(record))
+
+
 def tested(state, config, number, head, verdict, url, now):
     require_snapshot(state)
     require(str(number) in state["active"], "PR is not in hand")
@@ -982,6 +1119,7 @@ def tested(state, config, number, head, verdict, url, now):
     require(verdict in VERDICTS, "verdict must be pass, fail or mixed")
     event = cached_comment(state, config, number, url)
     record = state["active"][str(number)]
+    record.pop("carry", None)
     record.update(last_tested_head=head, last_tested_at=now, verdict=verdict, comment_url=url,
                   last_comment_at=event["created_at"], reply_cursor=event["created_at"], unanswered_cycles=0)
     # Keep a live claim until the main session's remote done/release is observed by scan.
@@ -1054,7 +1192,7 @@ def exclusion_summary(state, config):
     categories = [
         ("parked", ("author says to hold off", "locally parked")),
         ("own/skipped authors", ("skip_authors",)),
-        ("already tested/done", ("user already tested", "already in done")),
+        ("already tested/done", ("user already tested", "tested result carried", "already in done")),
         ("drafts without invitation", ("draft has no testing invitation",)),
         ("unapproved/unavailable cards", ("unapproved card", "request feed unavailable")),
         ("hardware mismatch", ("no open request fits",)),
@@ -1082,7 +1220,7 @@ def report(state, config, now, since, why=False):
     def row(group, number, author, what, when, why):
         lines.append("| " + " | ".join(clean(v) for v in (group, f"#{number} {author}" if number else "-", what, when or "-", why)) + " |")
     for record in sorted(state["active"].values(), key=lambda r: (r["tier"], r["number"])):
-        row("In hand", record["number"], record["author"], record["wait_for"], record["wait_since"], record["why"]["text"])
+        row("In hand", record["number"], record["author"], record["wait_for"], record["wait_since"], record_reason(record))
         if record["wait_for"] in ("our-reply", "our-test") or record.get("unanswered_cycles", 0) >= 3:
             detail = "; ".join(record.get("blocks", [])) if why else "held; see --why" if record.get("blocks") else "keep this PR moving"
             row("Owed by us", record["number"], record["author"], "last-note draft" if record.get("unanswered_cycles", 0) >= 3 else record["wait_for"], record["wait_since"], detail)
@@ -1095,7 +1233,7 @@ def report(state, config, now, since, why=False):
     for bucket in ("done", "parked"):
         for record in sorted(state[bucket].values(), key=lambda r: r["finished_at"], reverse=True):
             if epoch(record["finished_at"]) >= cutoff:
-                row("Finished" if bucket == "done" else "Parked", record["number"], record["author"], record["end_reason"], record["finished_at"], record["why"]["text"])
+                row("Finished" if bucket == "done" else "Parked", record["number"], record["author"], record["end_reason"], record["finished_at"], record_reason(record))
     for item in [c for c in candidates(state, config) if not any(not r.startswith("main session must inspect")
                                                                for r in c["exclusions"])][:5]:
         what = "diff-review" if item["exclusions"] else "take"
@@ -1167,6 +1305,10 @@ def parser():
     p.add_argument("--head", required=True)
     p.add_argument("--verdict", required=True, choices=VERDICTS)
     p.add_argument("--comment", required=True)
+    p = sub.add_parser("carry", help="verify an identical, non-overlapping rebase without claiming another test")
+    p.add_argument("pr", type=int)
+    p.add_argument("--from", dest="from_head", required=True)
+    p.add_argument("--to", dest="to_head", required=True)
     p = sub.add_parser("waiting")
     p.add_argument("pr", type=int)
     p.add_argument("for_what", choices=WAITS)
@@ -1203,6 +1345,7 @@ def main(argv=None):
             if config_path.exists():
                 config = read_json(config_path)
             else:
+                require(args.command != "carry", "carry requires an initialized config and scan; no network lookup performed")
                 authors, provenance = Backend().authors()
                 config = defaults(authors, provenance, now)
                 atomic_json(config_path, config)
@@ -1217,6 +1360,9 @@ def main(argv=None):
                     print("Warning: " + clean(warning))
             elif args.command == "next":
                 print(format_action(next_action(state, config, now)))
+                for record in state["active"].values():
+                    if record.get("carry"):
+                        print(f"Result #{record['number']}: " + carry_label(record))
                 for line in exclusion_output(state, config, args.why):
                     print(line)
                 if state["snapshot"]:
@@ -1251,9 +1397,13 @@ def main(argv=None):
                     finish(state, args.pr, now)
                 elif args.command == "reviewed":
                     reviewed(state, args.pr, args.head, args.note, now)
+                elif args.command == "carry":
+                    carry(state, args.pr, args.from_head, args.to_head, now, clone=CLONE)
                 validate_state(state)
                 atomic_json(state_path, state)
                 print(f"Recorded {args.command} #{args.pr} locally at {now}; no remote action taken")
+                if args.command == "carry":
+                    print(carry_label(state["active"][str(args.pr)]))
         return 0
     except (LoopError, OSError, subprocess.CalledProcessError) as error:
         print("pr_loop: " + str(error), file=sys.stderr)

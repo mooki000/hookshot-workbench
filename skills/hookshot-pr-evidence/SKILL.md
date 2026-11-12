@@ -162,7 +162,21 @@ A claim is dropped out loud when the work stops.
    until someone has. Source-only/stand-in tests are not a replacement for the runtime evidence a change needs.
 6. **Commits**: author `Michael Schienbein <7663497+mooki000@users.noreply.github.com>`; new GPT-6 Astra messages end with
    `Assisted-by: GPT-6 Astra` and `Co-Authored-By: GPT-6 Astra <noreply@openai.com>`; preserve historical authors/trailers.
-7. **The main session** reads every commit's diff, runs the test both ways itself, runs the gate script, and only
+7. **Windows before the push** (2026-11-12: four Windows-only faults in one week, two of them found by a reviewer
+   because the pull request's Windows job was red and nobody had looked). A commit that can behave differently on
+   Windows (a new or changed C/C++ fixture, Python that touches files, paths, processes or locking, a workflow
+   change) runs the project's own checks on the user's fork FIRST, and reaches the pull request only when both
+   `windows-2022` parts are green:
+
+       /home/mooki/Games/.hookshot-harness/hs-fork-ci.sh <commit> <label>      # exit 0: both Windows parts and the rest
+
+   It pushes the commit to a scratch branch `ci/<label>-<sha8>` on the fork, opens a draft pull request inside the
+   fork, waits, prints one line per job, closes the draft and deletes the branch. Exit 2 means only a non-Windows job
+   failed: read it (the fork's AppImage job can fail at a download). Never sync or push the fork's `main`. The local
+   `hs-win-fixture-check.sh` stays the fast first look (it now fails a fixture that uses `getenv`, `fopen` and their
+   kin, or includes `hookshot_env.h`, without `#define _CRT_SECURE_NO_WARNINGS` before its first include), but it is
+   a cross-compile, not Windows: it does not replace the fork run.
+8. **The main session** reads every commit's diff, runs the test both ways itself, runs the gate script, and only
    then pushes:
 
        /home/mooki/Games/.hookshot-harness/hs-pr-check.sh <branch> <title file>      # must print PASS
@@ -224,6 +238,9 @@ Pictures and videos of the game are allowed (the rule is about game files). They
 
 ## After opening
 
+- **Read the pull request's own checks after EVERY push, before anything is said about it** (to the user, in the
+  team room, on the thread): `hs-pr-ci.sh <number>` when the run has finished. A red job found by a reviewer first is
+  a miss; "pushed" is not "green".
 - **Comments and reviews**: `hs-watch-threads.py <numbers>` runs in the background and reports new ones; once a day,
   and whenever the user asks, read all of them in one sweep (a loop of `gh pr view <n> --json comments,reviews` over
   `gh pr list --author mooki000`, and `gh api notifications`). Answer each the same day: a tester gets thanks and what
