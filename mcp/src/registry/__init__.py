@@ -113,6 +113,9 @@ class Registry:
                     observed_at TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_job ON events(job_id, seq);
                 CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, document TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS run_owners (
+                    run_id TEXT PRIMARY KEY REFERENCES runs(id),
+                    job_id TEXT NOT NULL REFERENCES jobs(id));
                 CREATE TABLE IF NOT EXISTS artifacts (
                     id TEXT PRIMARY KEY, document TEXT NOT NULL, path TEXT NOT NULL);
             """)
@@ -270,6 +273,29 @@ class Registry:
         with self._db() as db:
             return bool(self._job(db, job_id)["cancel_requested"])
 
+    def own_run(self, job_id: str, run_id: str) -> None:
+        """Opt into receipt propagation; ordinary run_ids are only references."""
+        _valid_id(run_id, "run")
+        with self._db(write=True) as db:
+            job = Job.model_validate_json(self._job(db, job_id)["document"])
+            row = db.execute("SELECT document FROM runs WHERE id=?", (run_id,)).fetchone()
+            if row is None:
+                raise fail("not_found", "run_ownership")
+            run = Run.model_validate_json(row[0])
+            if job.state in TERMINAL or run.state in TERMINAL:
+                raise fail("refused_by_policy", "run_ownership")
+            owner = db.execute("SELECT job_id FROM run_owners WHERE run_id=?", (run_id,)).fetchone()
+            if owner is not None and owner[0] != job_id:
+                raise fail("refused_by_policy", "run_ownership")
+            db.execute("INSERT OR IGNORE INTO run_owners VALUES (?,?)", (run_id, job_id))
+            if run_id not in job.run_ids:
+                data = job.model_dump()
+                data["run_ids"].append(run_id)
+                updated = Job.model_validate(data)
+                db.execute("UPDATE jobs SET document=? WHERE id=?", (updated.model_dump_json(), job_id))
+            if owner is None:
+                self._event(db, job_id, "run_owned", {"run_id": run_id})
+
     def finish(self, job_id: str, state: State, receipt: Receipt, *, error=None) -> Job:
         if state not in TERMINAL or receipt.job_id != job_id:
             raise fail("invalid_argument", "job_finish")
@@ -285,7 +311,8 @@ class Registry:
             job = Job.model_validate(data)
             db.execute("UPDATE jobs SET document=?,receipt=? WHERE id=?", (job.model_dump_json(), receipt.model_dump_json(), job_id))
             self._event(db, job_id, "finished", receipt.model_dump())
-            for run_id in job.run_ids:
+            owned = db.execute("SELECT run_id FROM run_owners WHERE job_id=?", (job_id,)).fetchall()
+            for (run_id,) in owned:
                 row = db.execute("SELECT document FROM runs WHERE id=?", (run_id,)).fetchone()
                 if row is None:
                     raise fail("not_found", "job_finish")

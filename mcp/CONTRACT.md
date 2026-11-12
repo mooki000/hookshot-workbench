@@ -40,8 +40,9 @@ Returning without a terminal receipt is `uncertain_outcome`, not success. Cancel
 
 `registry.claim_authorization(authorization_id, plan_hash, job_id)` reserves one named hold for exactly one job.
 Claim before launch, then still recheck `policy.authorize(..., stage="admission")` inside admission. A repeated claim
-for the same job/plan is idempotent; a different job cannot consume the same authorization. `registry.finish` also
-finishes linked nonterminal Run records transactionally, preserving their build provenance and terminal evidence.
+for the same job/plan is idempotent; a different job cannot consume the same authorization. `registry.own_run(job_id,
+run_id)` explicitly binds lifecycle ownership. Only these Runs receive transactional terminal receipt propagation;
+ordinary `job.run_ids` are references and never authorize an input/wait/evidence job to finish a live game.
 
 For queue position, append a `gate_request` event with `{pid, device, request_id}` after the real gate process is
 identified. `registry.latest_event(job_id, "gate_request")` lets `queue_status` map that owned request without accepting

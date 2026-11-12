@@ -18,7 +18,7 @@ async def test_async_operation_cleanup_and_run_receipt(deps):
     try:
         run = deps.registry.create_run()
         job = deps.registry.create_job("fixture")
-        deps.registry.update_job(job.job_id, run_ids=[run.run_id])
+        deps.registry.own_run(job.job_id, run.run_id)
         async def operation():
             await asyncio.Event().wait()
         async def cancel():
@@ -138,3 +138,44 @@ def test_bootstrap_disables_cwd_dotenv(tmp_path):
     result = subprocess.run([sys.executable, "-c", "import src.main; print('loaded')"],
                             cwd=tmp_path, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0 and result.stdout.strip() == "loaded"
+
+
+def test_stdio_process_logs_only_to_stderr(tmp_path):
+    code = (
+        "from pathlib import Path; import sys,logging; "
+        "from src.main import build_server,configure_logging; from src.config import Config; "
+        "configure_logging(); logging.warning('synthetic server diagnostic'); "
+        "build_server(Config(state_root=Path(sys.argv[1]))).run(transport='stdio',show_banner=False,log_level='WARNING')"
+    )
+    result = subprocess.run([sys.executable, "-c", code, str(tmp_path / "state")],
+                            input="", capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0 and result.stdout == ""
+    assert "synthetic server diagnostic" in result.stderr
+
+
+async def test_named_authorization_cannot_be_replayed(deps):
+    await deps.open()
+    try:
+        from src.errors import WorkbenchError
+        first = deps.registry.create_job("fixture")
+        second = deps.registry.create_job("fixture")
+        deps.registry.claim_authorization("one-hold", "a" * 64, first.job_id)
+        deps.registry.claim_authorization("one-hold", "a" * 64, first.job_id)
+        with pytest.raises(WorkbenchError):
+            deps.registry.claim_authorization("one-hold", "a" * 64, second.job_id)
+    finally:
+        await deps.close()
+
+
+async def test_referenced_run_is_not_finished_by_action_receipt(deps):
+    await deps.open()
+    try:
+        run = deps.registry.create_run(state=State.RUNNING)
+        action = deps.registry.create_job("fixture_action")
+        deps.registry.update_job(action.job_id, run_ids=[run.run_id])
+        deps.registry.finish(action.job_id, State.COMPLETED, Receipt(
+            job_id=action.job_id, observed_at=utc_now(), exit_code=0, stop_reason="completed",
+            process_exited=True, descendants_exited=True, queue_seconds=0, held_seconds=1))
+        assert deps.registry.get_run(run.run_id).state == State.RUNNING
+    finally:
+        await deps.close()
