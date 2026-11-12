@@ -16,6 +16,7 @@
 # Saves are game data: they stay on this PC. Never attach, post, upload or commit them.
 set -euo pipefail
 H=/home/mooki/Games/.hookshot-harness
+source "$(dirname -- "${BASH_SOURCE[0]}")/hs-names.sh"
 LIB=$H/saves
 MARK=.hs-save
 usage() { sed -n '4,15p' "$0" >&2; exit 2; }
@@ -53,7 +54,9 @@ uid_dirs=("$src"/save/*/)
 [ -d "${uid_dirs[0]}" ] || { echo "hs-save.sh: $src/save holds no user folder" >&2; exit 2; }
 
 target=$(realpath -m "$target")
-for p in "$HOME/.local/share/hookshot" "$HOME/Games/Hookshot" "$HOME/Games/Ocarina" "$HOME/Games/Ocarina-linux-next" \
+protected=$(hs_protected_user_paths "$HOME") || exit 2
+mapfile -t protected_paths <<< "$protected"
+for p in "${protected_paths[@]}" "$HOME/Games/Ocarina" "$HOME/Games/Ocarina-linux-next" \
          "$LIB" /home/mooki/Games/.hookshot-harness; do
     case "$target/" in "$p"/*) echo "hs-save.sh: refusing to write under $p" >&2; exit 2 ;; esac
 done

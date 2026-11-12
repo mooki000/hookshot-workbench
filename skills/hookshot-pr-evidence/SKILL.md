@@ -1,7 +1,7 @@
 ---
 name: hookshot-pr-evidence
 description: >
-  Take a finished Hookshot change to a pull request on NotRexed/Hookshot at the user's standard and keep it honest
+  Take a finished Hookshot or Longshot change through evidence, review and the selected forge's PR process; keep it honest
   afterwards: the issue that claims it, the overlap search, the evidence to collect while working (result lines,
   per-run tables, labelled pictures), the body in the user's form (what it is for, what is measured, what is not;
   problem; what changed; how tested; risks), the checks before a push, review, and testing other people's pull
@@ -10,6 +10,13 @@ description: >
 ---
 
 # Hookshot pull requests and posts: evidence in, promises kept
+
+**Hookshot / Longshot:** use the workbench's shared runtime-name resolver and keep local skill/harness names.
+The `gh`, fork-CI, overlap and MCP GitHub routes below remain **GitHub-only**. For Longshot's Forgejo, verify the
+actual account, fork parent, remote, exact head, runner and complete check logs; do not relabel a GitHub record.
+Waiting/cancelled/zero checks or unknown runners never pass. Do not run proposed login/read helpers to migrate
+credentials. The selected Forgejo CLI has no direct `gh --log-failed` or artifact-attestation equivalent; checksums
+are not signed provenance. Main retains all push/post/fork authority.
 
 **Use for:** PR evidence, reviews, rebases, CI and tracker drafts. Read the whole current thread and description
 before spending a build/run or calling a result a finding; check `reports/POSTED.md` for what was already said.
@@ -31,7 +38,7 @@ Use the corresponding `issues/<n>/comments` and `pulls/<n>/reviews` endpoints wh
 If head, description or newest comment moved, read the new state before allocating work. A parked or “hold off”
 description stops testing. A local branch name is not the pushed PR head.
 
-Upstream is `NotRexed/Hookshot` (GPL-3.0-or-later); the user's fork is `mooki000/Hookshot` (remote `fork` in
+The legacy GitHub upstream is `NotRexed/Hookshot` (GPL-3.0-or-later); the user's fork is `mooki000/Hookshot` (remote `fork` in
 `/home/mooki/Code/Hookshot`). Everything is posted as the user (mooki000) and **only by the main session**; agents
 write drafts and never push or post. The project's own rules come first: `docs/workflow.md`, `AGENTS.md`,
 `CONTRIBUTING.md`. Read `skill://hookshot-workbench` for building and running.
@@ -79,6 +86,10 @@ the load. Then one bullet per check, each with its result as the program printed
 ## Not tested          (or "Not shown yet" for a draft)
 Explicitly list the **Windows execution of every new/changed C/C++ fixture** when only syntax was checked.
 The Windows-target preflight is not Windows runtime evidence, even if Linux passes.
+It also compiles against llvm-mingw's libc++, while the project's Windows runner compiles C++ test fixtures with
+clang++ against Microsoft's standard library: a C++ library call can pass here and fail there (seen with
+`std::chrono::file_clock::to_sys`, which Microsoft's library does not have). For changed C++ fixtures only the
+fork's Windows run settles it; run the whole suite locally first, not just the tests the change seems to touch.
 ## Risks               what could break and for whom; what a wrong guess here would look like
 ## Overlaps            other open pull requests in the same lines, from scripts/pr_overlap.py, hunks read
 ## Questions for you   only real decisions for the maintainers, numbered
@@ -116,7 +127,7 @@ window, what the default is and who sets it, and what happens on Windows.
 The work is claimed before it starts. Coordination now uses the project's `scripts/team_chat.py` from
 `/home/mooki/Code/hookshot-wt/main-tools`, under `hookshot-discord-updates`; Main alone posts, at most once an
 hour, after reading the room, in the project's current labelled form with full links. The user is signed in;
-agents never read/copy the session under `~/.config/hookshot/`. Workers prepare drafts only.
+agents never read/copy sessions under `~/.config/hookshot/` or `~/.config/longshot/`. Workers prepare drafts only.
 The worklist score remains severity S0 8, S1 5, S2 3, S3 1, times reach, times confidence 1.0/0.7/0.4.
 **A claim issue is opened only while there is no PR yet**: do not duplicate an existing PR with a claim issue.
 
@@ -214,7 +225,8 @@ A Conventional Commit, checked by CI and used as the squash commit and the chang
 `fix(scope): ...`, `perf`, `refactor`, `docs`, `test`, `ci`, `build`, `chore`, `revert`; scopes as the project uses
 them (`vk`, `linux`, `menu`, `runtime`, `builder`, `video`, `vcores`, `coop`). `feat` makes a minor release, `fix` and
 `perf` a patch: choose the type by what the change is. After the colon, say what is true after the change in the
-player's words (`Linux Play leaves the game its hookshot_log.txt again`).
+player's words (for the affected runtime, `Linux Play leaves the game its hookshot_log.txt again` or
+`Linux Play leaves the game its longshot_log.txt again`).
 
 ## Pictures
 
@@ -321,8 +333,23 @@ continue. Read `hookshot-pr-loop` for the full lane rule; author priority is not
 
 ## Workbench MCP routes
 
+After the operator setup linked in `hookshot-workbench` (private state root, catalogues, policy and registered roots),
+without an MCP client, run these from the installed workbench checkout:
+
+```sh
+uv run --project mcp hookshot-wb list --json
+uv run --project mcp hookshot-wb call workbench_status --args '{}'
+uv run --project mcp hookshot-wb read 'workbench://tools'
+```
+
+For a table tool, use `call <tool> --args '<JSON object>'`; add `--profile operate` for its local/run operations.
+Read the catalogue's **CLI broker** column: registry/file reads are one-shot, while live sessions and owned jobs
+use the private persistent broker. Submission returns a Job immediately, not its completion. Keep the same
+configured state root across calls; a CLI timeout does not cancel work or authorize replay. Do not stop a shared
+broker to clean up one task.
+
 Use registered IDs, not caller-selected scripts or paths. Check `workbench_status()` and the installed catalogue
-first; an integrated group can still lack its operator configuration. `observe` is read-only; local checks/jobs
+first; an integrated group can still lack its operator configuration. `observe` exposes READ tools; local checks/jobs
 need `operate` and current policy. A returned Job is not a result: use `job_wait(job_id=...)`, then
 `job_read(job_id=...)` and retain its receipt. Follow every cursor and truncation flag.
 Pushes, posts, uploads, fork-CI starts and claims remain Main's shell actions; MCP has no route for them.

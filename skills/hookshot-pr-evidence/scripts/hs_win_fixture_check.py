@@ -23,6 +23,13 @@ import types
 
 SUFFIXES = {'.c', '.cc', '.cpp', '.cxx', '.C'}
 HERE = Path(__file__).resolve().parent
+_root = HERE.parents[2]
+if not (_root / 'hs_names.py').is_file():
+    _root = _root / 'harness'
+if not (_root / 'hs_names.py').is_file():
+    _root = Path('/home/mooki/Games/.hookshot-harness')
+sys.path.insert(0, str(_root))
+from hs_names import PROJECTS, Names, NameError as ProjectNameError, environment_header, environment_value
 
 
 def command(argv, **kwargs):
@@ -88,7 +95,7 @@ def driver_arguments(root, args):
     missing = sorted(name for name in names if not tools.get(name))
     if missing:
         raise RuntimeError('runner prerequisites unavailable: ' + ', '.join(missing) +
-                           '; set RX_CPM or the declared HOOKSHOT_*_HEADERS path')
+                           "; set RX_CPM or the selected checkout's HOOKSHOT_*/LONGSHOT_*_HEADERS path")
     return [arg.format(**tools) for arg in args]
 
 
@@ -135,9 +142,9 @@ def crt_policy(source, argv):
             elif arg.startswith('-include') and arg != '-include':
                 forced.append(arg[len('-include'):])
             i += 1
-    env_header = any(Path(name.replace('\\', '/')).name == 'hookshot_env.h'
-                     for name in [m.group(1) for m in includes] + forced)
-    if not calls and not env_header:
+    env_headers = sorted({Path(name.replace('\\', '/')).name for name in [m.group(1) for m in includes] + forced}
+                         & {Names(project).env_header for project in PROJECTS})
+    if not calls and not env_headers:
         return []
     if not forced:
         prefix = clean[:includes[0].start()] if includes else clean
@@ -158,7 +165,7 @@ def crt_policy(source, argv):
                     enabled = True
     if enabled:
         return []
-    uses = ', '.join((['hookshot_env.h'] if env_header else []) + calls)
+    uses = ', '.join(env_headers + calls)
     return [f'CRT policy: {source.name} uses {uses}; define {macro} before the first include '
             '(or in compiler flags before forced includes). Conditional/late defines are not sufficient.']
 
@@ -350,7 +357,7 @@ def empty_environment_contract(root, out):
     code = '''#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "hookshot_env.h"
+#include "__HS_ENV_HEADER__"
 static const char *value;
 static int failures, ini;
 static int windows_putenv(const char *name, const char *v) { (void)name; value = v && *v ? v : NULL; return 0; }
@@ -367,7 +374,7 @@ for (unsigned i = 0; i < sizeof(modes)/sizeof(*modes); ++i) check(modes[i]);
 printf("empty-environment contract: %d failures\\n", failures); return failures != 0; }
 '''
     src, exe = out / 'empty-env-contract.c', out / 'empty-env-contract'
-    src.write_text(code)
+    src.write_text(code.replace('__HS_ENV_HEADER__', environment_header(root).name))
     argv = ['clang', '-std=c11', '-Wall', '-Wextra', '-Werror', '-I' + str(root / 'gpu/vk/compat'), str(src), '-o', str(exe)]
     r = command(argv)
     if not r.returncode:
@@ -384,16 +391,22 @@ def main():
     p.add_argument('base', nargs='?')
     p.add_argument('--test', action='append', default=[], help='explicit driver, for historical proofs')
     p.add_argument('--output', type=Path, help='new evidence directory; never overwritten')
-    p.add_argument('--sysroot', type=Path, default=os.environ.get('HOOKSHOT_MINGW'))
+    p.add_argument('--sysroot', type=Path)
     a = p.parse_args()
     root = a.worktree.resolve()
     base = a.base or git(root, 'merge-base', 'origin/main', 'HEAD')
     sysroot = a.sysroot
     if sysroot is None:
+        try:
+            value = environment_value(os.environ, 'MINGW')
+        except ProjectNameError as error:
+            p.error(str(error))
+        sysroot = Path(value) if value else None
+    if sysroot is None:
         candidates = sorted((Path.home() / 'Code/hookshot-wt/deps/llvm-mingw').glob('*/include/windows.h'))
         sysroot = candidates[-1].parent.parent if candidates else None
     if not sysroot or not (sysroot / 'include/windows.h').is_file():
-        p.error('set HOOKSHOT_MINGW or --sysroot to llvm-mingw with include/windows.h')
+        p.error('set HOOKSHOT_MINGW, LONGSHOT_MINGW or --sysroot to llvm-mingw with include/windows.h')
     out = a.output or Path(tempfile.mkdtemp(prefix='hs-win-fixtures-'))
     if a.output:
         out.mkdir(parents=True, exist_ok=False)

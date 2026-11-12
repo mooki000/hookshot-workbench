@@ -19,6 +19,7 @@ import scenario
 from common import HARN, LOCAL, capture, command, env_clean, gated, put, slug, stamp, text
 from metrics import parse_tests
 from store import Store
+from hs_names import log_path
 
 
 def catalogue_scenarios(config):
@@ -58,12 +59,14 @@ def comparisons(store, night, current, history):
     findings = []
     if current['status'] == 'safety-stop' or current.get('cut_short'):
         return []
+    logfile = log_path(current['run_dir'])
+    log = str(logfile) if logfile is not None else None
     if current['status'] != 'passed' and history:
         findings.append({'scenario': current['id'], 'kind': 'passed-now-fails', 'error': current.get('error'),
-                         'summary': current['summary'], 'log': str(Path(current['run_dir']) / 'hookshot_log.txt')})
+                         'summary': current['summary'], 'log': log})
     if current.get('fatal_lines'):
         findings.append({'scenario': current['id'], 'kind': 'crash-or-device-fault', 'lines': current['fatal_lines'],
-                         'log': str(Path(current['run_dir']) / 'hookshot_log.txt')})
+                         'log': log})
     for metric, record in current['metrics'].items():
         past = [{'value': r['metrics'][metric]['value'], 'disturbed': r['disturbed']}
                 for r in history if metric in r['metrics']]
@@ -74,7 +77,7 @@ def comparisons(store, night, current, history):
             findings.append({'scenario': current['id'], 'kind': 'metric', 'metric': metric, **decision})
     for finding in compare.compare_signatures(current['signatures'], [r['signatures'] for r in history]):
         findings.append({'scenario': current['id'], 'kind': 'log-signature', **finding,
-                         'log': str(Path(current['run_dir']) / 'hookshot_log.txt')})
+                         'log': log})
     for name, image in current['images'].items():
         past = [r['images'][name]['features'] for r in history if name in r['images']]
         result = compare.compare_image(image['features'], past)
@@ -246,7 +249,8 @@ def run_locked(config, args):
             for count, finding in enumerate(found):
                 finding['device_lines'] = current.get('device_lines', [])
                 finding['hardware'] = capture(['uname', '-sr']).strip()
-                finding.setdefault('log', str(Path(current['run_dir']) / 'hookshot_log.txt'))
+                logfile = log_path(current['run_dir'])
+                finding.setdefault('log', str(logfile) if logfile is not None else None)
                 reporting.enrich(config, night, build, finding, spec, history[-1] if history else None,
                                  out / 'findings' / (spec['id'] + '-' + str(count)))
                 store.finding(night, spec['id'], finding['kind'], finding)

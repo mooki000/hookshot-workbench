@@ -1,7 +1,7 @@
 ---
 name: hookshot-workbench
 description: >
-  Start here when building, running, testing or debugging Hookshot on this machine. Locate the owned worktree,
+  Start here when building, running, testing or debugging Hookshot or Longshot on this machine. Locate the owned worktree,
   dependencies and harness; build without starting a game; run windowless through the resource gates; collect
   logs and pictures; run game-free and Windows-target checks. Use registered workbench MCP operations where
   configured, without bypassing the gates or treating ordinary runs as performance measurements.
@@ -9,7 +9,13 @@ description: >
 
 # Hookshot workbench
 
-**Use for:** every Hookshot task on this machine. Read the agent brief, then the matching task skill.
+**Hookshot / Longshot:** Longshot continues the project at `https://git.magicbean.dev/MagicBeanDev/Longshot`.
+Keep skill names, local harness/clone paths, gates and `HOOKSHOT_WB_*` unchanged. `hs-names.sh` / `hs_names.py`
+select the owned checkout/copy's runtime names; missing or mixed identities refuse. Existing `gh`, release, CI and
+queue routes below remain GitHub-only. Do not substitute forge names or migrate credentials; use reviewed public
+Forgejo GET readers. Proposed forge login/read helpers can change credentials and are not an approved workaround.
+
+**Use for:** every Hookshot or Longshot task on this machine. Read the agent brief, then the matching task skill.
 **All game runs are windowless.** A leftover `window-ok` is not permission. Do not send anything to the compositor.
 Reports name the skills read, tools used, pinned sources, checks exercised and work not tested.
 
@@ -22,13 +28,21 @@ P="$W/deps/python/bin/python3"
 CPM="$W/deps/cpm"
 ```
 
-Read `$W/reports/AGENT-BRIEF.md`. In the selected Hookshot checkout read `docs/workflow.md`, `AGENTS.md`,
+Read `$W/reports/AGENT-BRIEF.md`. In the selected Hookshot or Longshot checkout read `docs/workflow.md`, `AGENTS.md`,
 `CONTRIBUTING.md`, `docs/development.md` and the relevant `docs/design.md` section. Set `WT` to your owned worktree,
 `COPY` to your owned built copy, and `OUT` to your new evidence directory before using the examples.
+Source `"$H/hs-names.sh"` once. Run `hs_names checkout "$WT"` after selecting/creating a worktree; repeat it when
+`WT` changes. It supplies `HS_EXE`, `HS_RENDERER`, `HS_PROFILE` and `HS_CTL`. `hs_names copy "$COPY"` selects
+`HS_LOG`, options and other copy names. `hs_names.log_path(run, required=True)` selects existing evidence; it never
+invents a missing log. A pre-client checkout can be named from its build declarations without having a usable client.
+
+```sh
+source "$H/hs-names.sh"
+```
 
 | Thing | Location |
 |---|---|
-| Clone; upstream and fork remotes | `$HOME/Code/Hookshot`; `origin`, `fork` |
+| Legacy clone and GitHub remote names | `$HOME/Code/Hookshot`; `origin`, `fork` |
 | Worktrees and reports | `$W/<name>`; `$W/reports` |
 | Read-only dump | `$W/work/dump` (`exefs/`, `romfs/`) |
 | Pinned Python and headers | `$P`; `$CPM` |
@@ -38,10 +52,11 @@ Read `$W/reports/AGENT-BRIEF.md`. In the selected Hookshot checkout read `docs/w
 
 - No game files, saves, lifted code, world-model facts or routes leave this PC or enter git. Keep game-content notes
   in `$H/playthrough/NOTES.md`; dump/save provenance belongs in `$H/LOCAL-NOTES.md`, not a public skill.
-- Never touch the user's `Games/Ocarina*`, `Games/Hookshot`, `Downloads`, `.config`, global git configuration or system
-  packages. Never run or test in the player's folder. No code from the other port's repository.
+- Never touch the user's `Games/Ocarina*`, `Games/Hookshot`, `Games/Longshot`, `Downloads`, `.config`, global git
+  configuration or system packages. Never run or test in a player folder. No code from the other port's repository.
 - Every Vulkan/GL device uses its device gate. Builds use the build gate. Full builds also take
-  `/tmp/hookshot-full-build.lock` and set `HOOKSHOT_LIFT_JOBS=8`. Do not edit build inputs while a build runs.
+  `/tmp/hookshot-full-build.lock` and set the checkout-confirmed `HOOKSHOT_LIFT_JOBS=8` or `LONGSHOT_LIFT_JOBS=8`
+  through `hs_build_env` below. Do not edit build inputs while a build runs.
 - Before a gated command, unset the test/bypass variables below. Never set them to skip admission.
 - One waiter of yours per gate. A GPU hold is at most 480 seconds **including shutdown**; use 450 seconds or less
   for an ordinary game so the wrapper's 20-second kill reserve fits. The GPU gate itself does not enforce the limit.
@@ -59,6 +74,7 @@ unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKT
 
    ```sh
    git -C "$HOME/Code/Hookshot" worktree add --detach "$WT" "$COMMIT"
+   hs_names checkout "$WT" || exit
    ```
 
 2. Reuse `$P` and `$CPM` only when their pins match the worktree. The dependency helper is **not** a read-only check:
@@ -78,7 +94,10 @@ unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKT
    "$P" -I -B nx2/dump.py --dump "$W/work/dump"
    ```
 
-3. Use the selected release profile, hot list and link order. If they are absent, create the download parent first;
+3. Use the selected release profile, hot list and link order. The following is the **legacy Hookshot/GitHub**
+   download route. Renamed main's `scripts/release_parts.py` still uses GitHub, not Forgejo; for Longshot require
+   a separately verified matching release/setup/profile source, not a renamed old profile or an assumed Forgejo
+   release. No credential extraction is authorized. If the matching artifacts are absent, create the download parent first;
    keep its cache in the worktree. Record the returned release tag. These commands download; `--help` does not.
 
    ```sh
@@ -92,8 +111,9 @@ unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKT
 
    ```sh
    mkdir -p "$OUT"
+   hs_build_env "$WT" LIFT_JOBS=8 KEEP_BUILD_FILES=1 || exit
    flock /tmp/hookshot-full-build.lock \
-     "$HOME/Games/hs-build-slot" env RX_CPM="$CPM" HOOKSHOT_LIFT_JOBS=8 HOOKSHOT_KEEP_BUILD_FILES=1 \
+     "$HOME/Games/hs-build-slot" env RX_CPM="$CPM" \
      "$P" -I -u nx2/make_game.py \
        --romfs "$W/work/dump/romfs" --exefs "$W/work/dump/exefs" \
        --out "$COPY" --work "$WT/work/build" --jobs 16 --no-prepare-shaders --log "$OUT/build.log"
@@ -111,21 +131,21 @@ Prefer rebuilding with the same work/output/profile identity. A fast donor build
 immutable donor receipt; do not assume the copy named `main` or the old bench is compatible.
 
 After selecting that donor, set `DONOR_WORK`, `DONOR_COPY` and the receipt's relative profile path. Copy to **new**
-owned destinations with `cp -a --reflink=always`; make `work/` first. For a donor whose profile identity is
-`work/build/hookshot_pieces.prof`:
+owned destinations with `cp -a --reflink=always`; make `work/` first. For a same-identity donor whose recorded
+profile is `work/build/$HS_PROFILE` (`hookshot_pieces.prof` or `longshot_pieces.prof`):
 
 ```sh
 mkdir -p "$WT/work/build"
 cp -a --reflink=always "$DONOR_WORK" "$WT/work/fast"
-cp --reflink=always "$WT/work/fast/hookshot_pieces.prof" "$WT/work/build/hookshot_pieces.prof"
-RX_CPM="$CPM" OOT_WORK="$WT/work/fast" RX_RELEASE=1 RX_PGO="$WT/work/build/hookshot_pieces.prof" \
+cp --reflink=always "$WT/work/fast/$HS_PROFILE" "$WT/work/build/$HS_PROFILE"
+RX_CPM="$CPM" OOT_WORK="$WT/work/fast" RX_RELEASE=1 RX_PGO="$WT/work/build/$HS_PROFILE" \
   "$P" -I -B nx2/build.py --standalone --jobs 16 --dry-run
 ```
 
 Inspect the plan and object/profile keys. `--dry-run` does not compile, but may write planning/cache files; it is not
 permission to use another worktree. Compile the same command without `--dry-run`, through `hs-build-slot`.
 Copy the donor game into the new `$COPY`, remove only that copy's inherited `runs/`, and deploy both
-`work/fast/sa/build/hookshot` and `hookshot_vk.so`. Changes to shipped assets, including pipeline-state lists, need
+`work/fast/sa/build/$HS_EXE` and `$HS_RENDERER`. Changes to shipped assets, including pipeline-state lists, need
 candidate-owned generation/deployment or a full build. Record the source of both binaries and their checksums.
 
 `RX_RELEASE=1` and the donor's actual PGO identity matter. Different profile paths can rebuild hot objects; no profile
@@ -138,6 +158,7 @@ Use a new `TAG`; `hs-run.sh` **deletes an existing `runs/$TAG` before starting**
 belong to another run. Read the selected binary's switches before adding any `NAME=VALUE` arguments.
 
 ```sh
+hs_names copy "$COPY" || exit
 "$H/hs-run.sh" "$COPY" "$TAG" 90
 ```
 
@@ -147,14 +168,15 @@ device, cache or isolation settings to bypass policy. `--user "$SAVE"` copies a 
 without it the wrapper copies `user-template/` if present, otherwise starts fresh.
 
 Useful options: `--input '<script>'`, `--from <seconds>`, `--keep-user`, `--prepare`, `--whole`, `--intel`,
-`--mem-max <size>`. Intel cannot combine with `--whole`, `--exclusive` or `--priority`. `--mem-max` uses a systemd
+`--mem-max <size>` and `--perf` (sampled context: read `hookshot-perf-monitor`). Intel cannot combine with `--whole`, `--exclusive` or `--priority`. `--mem-max` uses a systemd
 user scope with `MemoryMax` and no swap; it does not prove the game stayed under the cap.
 
 - Prepare only when needed: `"$H/hs-run.sh" "$COPY" "$TAG" 450 --prepare`. Check the actual game's exit 0 and
   `@@done shaders`; a timed-out preparation is incomplete. Do not infer restart/resume behavior.
 - A picture larger than 2048x1152 adds `--whole`, based on `HOS_OUTPUT_RES` or the copy's `output_res`. Keep those
   settings unchanged while queued. Ordinary runs may share the card; their printed rates are **not measurements**.
-- Inspect `$COPY/runs/$TAG/summary.txt`, `exit.txt`, `hookshot_log.txt`, `env-used.txt`, `frames.csv`, `present.csv`,
+- Inspect `$COPY/runs/$TAG/summary.txt`, `exit.txt`, `$HS_LOG` (`hookshot_log.txt` or `longshot_log.txt`),
+  `env-used.txt`, `frames.csv`, `present.csv`,
   `shots/` and `user/save/`. The **game's** wall timeout is 124 in `exit.txt`; the wrapper normally returns 0 after
   writing its summary, even when the game failed. Check the receipt, not only the shell status.
 - For scripted control, use `hookshot-scripted-play`. Enable `HOS_CONTROL` on the already-gated owned run. The
@@ -216,6 +238,12 @@ missing prerequisites; `--shard K/N` partitions CI, not full coverage. A missing
 `pass`/`FAIL`/`TIMEOUT` rows and totals. Check for your unintended dumps with
 `coredumpctl list --since '-30min' --no-pager`; do not confuse other work's dumps with yours.
 
+Run the whole suite before handing over a head, not only the tests a change seems to touch: the project's rule tests
+(`tests/test_env_on.py` for on/off switches, `tests/test_menu_i18n.py` for translated menu texts,
+`tests/test_readme_menu_rows.py`) catch changes far from their files. On a PC whose .NET cannot restore
+`Microsoft.AspNetCore.App.Ref` offline, `tests/test_updater_asset_digest.py` fails with `NU1100` on plain main too:
+report it as inherited and local after confirming the same failure on the base commit; do not hunt for an SDK.
+
 Changed C/C++ fixtures also need:
 
 ```sh
@@ -224,17 +252,31 @@ HOME="$TEST_HOME" HS_PYTHON="$P" RX_CPM="$CPM" "$H/hs-idle.sh" "$H/hs-win-fixtur
 
 Keep unsupported discovery visible. Syntax success is not Windows execution. Read `hookshot-pr-evidence` for the
 pre-push checker, imported-author rules, CI comparison and drafts. The main session alone syncs live skills into the public
-workbench and commits. Never run `sync-from-live.sh` from a worker assignment.
+workbench and commits. Run `sync-from-live.sh` only when that integration is explicitly delegated.
 
 ## MCP routes
 
-Use only registered IDs and configured tools. `workbench_status` reports selected tools and prerequisites; registration
-is not a configured backend or proof of a game run. Group status below is for the integration branch, not an installed
-client. A Job submission is not completion: retain `job_read`'s receipt; `job_wait` waits at most 30 seconds and does
-not cancel work. Reuse the same idempotency key for a transport retry; do not resubmit an uncertain action.
-Keep the owning MCP server alive while its sessions/jobs run. Do not use a short-lived in-process client as a session
-launcher: closing the server owns cancellation. Read the configured server's catalogue and CLI help before choosing
-an entry point; the stdio entry is a server, not a one-shot tool command.
+Use registered IDs and current policy. From the reviewed workbench repository root, after the operator's one-time
+setup in `mcp/README.md` (**Install and start**, **Configuration**, **Current operator policy**):
+
+```sh
+uv run --project mcp hookshot-wb list --json
+uv run --project mcp hookshot-wb call workbench_status --args '{}'
+uv run --project mcp hookshot-wb read workbench://policy
+uv run --project mcp hookshot-wb broker status
+```
+
+That setup supplies the private state root, catalogues, policy and registered roots; do not duplicate or relax it.
+Use `call TOOL --args JSON` with the advertised complete schema; authorized local/run tools need `--profile operate`.
+Simple readers are one-shot; live sessions/jobs share a persistent private broker. JSON results use stdout; errors
+use stderr. A returned Job is submission, not completion. Keep its idempotency key; never replay an uncertain reply.
+For a launch, read `job_read`'s `.events.events[]`, selecting `.kind == "bridge_ready"`; that is only bridge readiness.
+Before first input/picture, observe `menu` or `play` sustained for 30 further frames (`session_wait`, `stable_frames:30`).
+Boot input is refused. Cutscenes can report `loading`: a menu/play wait can time out while pictures still advance.
+Use `job_read` receipts; CLI `--timeout` bounds transport, not work. `serve` runs the broker in the foreground;
+`broker stop --timeout 90` ends all its owned work, so reconcile it first. Stdio remains a server, not a one-shot CLI.
+The catalogue marks each broker requirement. Integrated groups still need configuration; current MCP name support
+is separate from the dual-name harness and must not be assumed for a Longshot copy or log.
 
 | Step | Shell route | MCP tool (group; integration) | What it saves |
 |---|---|---|---|

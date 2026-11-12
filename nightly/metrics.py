@@ -2,12 +2,14 @@
 from collections import Counter, deque
 from pathlib import Path
 import csv
+import importlib.util
 import json
 import math
 import re
 import statistics
 from compare import signature
 from common import text
+from hs_names import log_path
 
 WARNING = re.compile(r'\b(?:warn(?:ing)?|error|fatal|crash|failed|failure|unsupported|timeout)\b|VK_ERROR_|ran without a core', re.I)
 ACTIVITY = re.compile(r'(?:pipeline|shader|program).*(?:compil|translat|built|pending|wait)|(?:compil|translat).*(?:pipeline|shader|program)', re.I)
@@ -124,9 +126,25 @@ def picture(path):
                 'black': hi <= 2, 'blank': hi - lo <= 2}
 
 
+def system_telemetry(run, *, start=None, end=None):
+    """Optional sampled context; load only the reader beside this harness, never run input."""
+    if not (Path(run) / 'perf.csv').is_file():
+        return None
+    try:
+        path = Path(__file__).resolve().parent.parent / 'perf' / 'hs_perf.py'
+        spec = importlib.util.spec_from_file_location('hookshot_system_telemetry', path)
+        reader = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reader)
+        return reader.attach(run, start=start, end=end)
+    except Exception:
+        # Optional instrumentation cannot invalidate the existing timing/safety evidence.
+        return {'artifact': 'perf.csv', 'status': 'cannot_tell', 'error': 'reader_unavailable',
+                'notice': 'Sampled context unavailable; existing decisions are unchanged.'}
+
+
 def collect(run, evidence, metadata):
     run, evidence = Path(run), Path(evidence)
-    log = text(run / 'hookshot_log.txt')
+    log = text(log_path(run))
     lines = log.splitlines()
     signatures = Counter(signature(s) for s in lines if WARNING.search(s))
     samples = [json.loads(s) for s in text(evidence / 'samples.jsonl').splitlines() if s]
@@ -175,7 +193,7 @@ def collect(run, evidence, metadata):
             a, b, c = (ordered[j][1]['luma_mean'] for j in (i-1, i, i+1))
             if abs(a-c) <= 5 and abs(b-(a+c)/2) >= 40:
                 flash_candidates.append(ordered[i][0])
-    return {'metrics': scalars, 'signatures': dict(signatures), 'images': images, 'missing': missing,
+    result = {'metrics': scalars, 'signatures': dict(signatures), 'images': images, 'missing': missing,
             'device_lines': [s for s in lines if re.search(r'vk: device \d|Vulkan.*driver', s)],
             'vram_log_lines': [s for s in lines if VRAM.search(s)], 'nocore_lines': nocore,
             'shader_pipeline_lines': [s for s in lines if ACTIVITY.search(s)],
@@ -183,3 +201,7 @@ def collect(run, evidence, metadata):
             'summary': text(run / 'summary.txt').strip(),
             'exit': int(text(run / 'exit.txt').strip()) if text(run / 'exit.txt').strip() else None,
             'samples': len(samples), 'fatal_lines': [s for s in lines if re.search(r'FATAL|CRASH:|VK_ERROR_DEVICE_LOST|device lost', s)]}
+    telemetry = system_telemetry(run)
+    if telemetry is not None:
+        result['system_telemetry'] = telemetry  # context only, never scalar/baseline inputs
+    return result

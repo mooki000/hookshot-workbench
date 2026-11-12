@@ -42,6 +42,10 @@ import tempfile
 import time
 from pathlib import Path
 
+_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_root if (_root / 'hs_names.py').is_file() else _root / 'harness'))
+from hs_names import GAME_EXECUTABLES, log_path
+
 HS_RUN = '/home/mooki/Games/.hookshot-harness/hs-run.sh'
 SLOT_VARS = ('HSGATE_SLOT_DIR', 'HSGATE_INTEL_SLOT_DIR', 'HSGATE_SLOT_TEST', 'HSGATE_SLOT_NODESKTOP', 'HSGATE_IN_GATE')
 PROMPT_HASH = '0x9824206c'
@@ -278,8 +282,8 @@ class Game:
             self.state_out.write(json.dumps(s) + '\n')
         if new:
             self.state_out.flush()
-        if self.log_tail is None and (self.R / 'hookshot_log.txt').exists():
-            self.log_tail = Tail(self.R / 'hookshot_log.txt')
+        if self.log_tail is None and (log := log_path(self.R)) is not None:
+            self.log_tail = Tail(log)
         if self.log_tail:
             for line in self.log_tail.lines():
                 self.log_lines.append(line)
@@ -289,7 +293,7 @@ class Game:
         return new
 
     def game_pids(self):
-        """The hookshot process of this run (its --user is the run's user folder)"""
+        """The game process of this run (its --user is the run's user folder)."""
         want = str(self.R / 'user')
         out = []
         for p in os.listdir('/proc'):
@@ -299,7 +303,7 @@ class Game:
                 cmd = (Path('/proc') / p / 'cmdline').read_bytes().split(b'\0')
             except OSError:
                 continue
-            if cmd and cmd[0].endswith(b'hookshot') and want.encode() in cmd:
+            if cmd and os.fsdecode(cmd[0]).rsplit('/', 1)[-1] in GAME_EXECUTABLES and want.encode() in cmd:
                 out.append(int(p))
         return out
 

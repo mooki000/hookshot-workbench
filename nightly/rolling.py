@@ -24,11 +24,10 @@ from monitor import processes, wait_for_player_idle
 from compare import compare_paired
 from store import Store
 import build as builder
+from hs_names import ALL_SETTINGS, GAME_EXECUTABLES, NameError, copy_names
+from report import TELEMETRY_HEADER, TELEMETRY_RULE, TELEMETRY_NOTE, telemetry_cells, telemetry_scope
 
 ROOT = LOCAL / 'rolling'
-CACHE_FILES = ('hookshot_programs.bin', 'hookshot_programs.idx', 'hookshot_pipelines.bin',
-               'mkw_vk_pipelines.bin', 'hookshot_computes.bin', 'hookshot_pipeline_states.bin',
-               'hookshot_prepared.bin', '.nv-cache', '.xdg-cache', '.mesa-cache')
 
 
 def load_module(name, path):
@@ -93,7 +92,7 @@ def require_source_marker(build):
 def stamp_new_copy(build):
     """Only for a just-built copy or a new verified reference snapshot."""
     folder = Path(build['copy'])
-    if any(Path(p['exe']) == folder / 'hookshot' for p in processes()):
+    if any(Path(p['exe']).parent == folder and Path(p['exe']).name in GAME_EXECUTABLES for p in processes()):
         raise RuntimeError('copy is running; never change its source marker')
     value = build.get('source_stamp', '')
     if not re.fullmatch(r'[0-9a-f]+', value):
@@ -110,13 +109,14 @@ def snapshot_reference(manifest, destination):
     source, destination = Path(manifest['copy']), Path(destination)
     if destination.exists():
         raise RuntimeError('reference destination exists; refusing to overwrite evidence')
-    if any(Path(p['exe']) == source / 'hookshot' for p in processes()):
+    names = copy_names(source)
+    if any(Path(p['exe']).parent == source and Path(p['exe']).name in GAME_EXECUTABLES for p in processes()):
         raise RuntimeError('reference copy is running; obtain an idle completed snapshot before retrying')
     if (source / 'mods').exists():
         raise RuntimeError('reference has mods; cannot silently change its meaning')
     destination.mkdir(parents=True)
     for item in source.iterdir():
-        if item.name in ('runs', 'hookshot_options.ini', 'hookshot_env.txt', '.nightly-owned'):
+        if item.name in ('runs', *ALL_SETTINGS, '.nightly-owned'):
             continue
         capture(['cp', '-a', '--reflink=always', item, destination / item.name])
     hashes = manifest.get('binary_sha256', manifest.get('sha256', {}))
@@ -125,8 +125,10 @@ def snapshot_reference(manifest, destination):
     for name, expected in hashes.items():
         with (destination / name).open('rb') as f:
             assert hashlib.file_digest(f, 'sha256').hexdigest() == expected, 'reference binary identity changed'
-    if any(Path(p['exe']) == source / 'hookshot' for p in processes()):
+    if any(Path(p['exe']).parent == source and Path(p['exe']).name in GAME_EXECUTABLES for p in processes()):
         raise RuntimeError('source started during the snapshot; cache consistency is not established')
+    if copy_names(destination).executable != names.executable:
+        raise NameError('reference snapshot changed project identity')
     (destination / '.rolling-owned').write_text(str(destination.name) + '\n')
     stamp_new_copy({**manifest, 'copy': str(destination)})
     return {**manifest, 'copy': str(destination), 'binary_sha256': hashes,
@@ -134,6 +136,8 @@ def snapshot_reference(manifest, destination):
 
 
 def compatible_cache(config, previous, new):
+    if copy_names(previous['copy']).executable != copy_names(new['copy']).executable:
+        return False
     old = previous.get('source_commit', previous['commit'])
     new_head = new.get('source_commit', new['commit'])
     p = subprocess.run(['git', '-C', config['repo'], 'diff', '--quiet', old, new_head, '--',
@@ -145,8 +149,11 @@ def compatible_cache(config, previous, new):
 
 
 def reuse_cache(previous, new):
+    names = copy_names(previous['copy'])
+    if names.executable != copy_names(new['copy']).executable:
+        raise NameError('cache reuse requires matching project identities')
     copied = []
-    for name in CACHE_FILES:
+    for name in names.cache_files:
         source, target = Path(previous['copy']) / name, Path(new['copy']) / name
         if source.exists():
             if target.exists():
@@ -299,13 +306,18 @@ def fixed_references(config, current_scenes, adapter):
             found = []
             template = json.loads(Path(scene['template']).read_text())
             wanted = {k: str(v) for k, v in template['run'].get('env', {}).items()}
+            run_local = {'RX_VK_READBACK_CSV'}
+            if template['run'].get('perf'):
+                wanted.pop('RX_VK_PERF_LOG', None)
+                wanted['RX_VK_PERF_FIELDS'] = 'all'
+                run_local.add('RX_VK_PERF_LOG')  # owned output location, not a scene setting
             for row in candidates:
                 if not row.get('commit', '').startswith(fixed['commit']):
                     continue
                 if not row.get('label', '').endswith(scene['reference_suffix']):
                     continue
                 result = row.get('result', {})
-                actual = {k: str(v) for k, v in result.get('environment', {}).items() if k != 'RX_VK_READBACK_CSV'}
+                actual = {k: str(v) for k, v in result.get('environment', {}).items() if k not in run_local}
                 if actual != wanted or not result.get('valid'):
                     continue
                 row = copy.deepcopy(row)
@@ -346,6 +358,8 @@ def handoff(config, build_config, out, scene, decision, previous, new):
                      'lift_jobs': 8, 'build_gate': build_config['build_gate'], 'full_build_lock': build_config['full_build_lock'],
                      'ngx_sdk': build_config.get('ngx_sdk'), 'prebuilt': prebuilt,
                      'patches': [{'path': str(folder / 'diagnostics.patch')}]}
+    if new.get('profile'):
+        case['build']['profile_files'] = list(new['profile'])
     case['build_command'] = [config['python'], '-I', '-B', str(Path(config['regress_dir']) / 'build_case.py'),
                              '--worktree', '{worktree}', '--commit', '{commit}', '--output', '{output}',
                              '--lift-key', '{lift_key}', '--donor-worktree', '{donor_worktree}',
@@ -403,6 +417,13 @@ def write_report(config, out, record):
               'each judged arm repeats within 5%. Loads are recorded, not used as a substitute for that rule.', '',
               '| Scene | Arm | Counts? | fps | mean ms | 1% low | >20 ms | >25 ms | CPU ms/frame (all threads) | readback wait ms/frame | peak RSS MiB | other cores avg / peak | load before / after |',
               '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|']
+    perf = any(row['result'].get('system_telemetry') is not None
+               for scene in record.get('scenes', []) for row in scene.get('runs', [])) or any(
+                   row['result'].get('system_telemetry') is not None
+                   for rows in record.get('references', {}).values() for row in rows)
+    if perf:
+        lines[-2] += TELEMETRY_HEADER
+        lines[-1] += TELEMETRY_RULE
     table_header = lines[-2:]
     for scene_index, scene in enumerate(record.get('scenes', [])):
         if scene_index:
@@ -410,11 +431,17 @@ def write_report(config, out, record):
         for row in scene.get('runs', []):
             r, m = row['result'], row['result'].get('measures', {})
             counts = r.get('valid') is True and r.get('disturbed') is False and r.get('kernel_errors') == 0
-            lines.append(f"| {scene['id']} | {row['label']} | {'yes' if counts else 'no'} | {f(m.get('fps'), 2)} | "
-                         f"{f(m.get('mean_ms'))} | {f(m.get('low1_fps'), 2)} | {m.get('over20', '-')} | {m.get('over25', '-')} | "
-                         f"{f(r.get('cpu_ms_per_frame'))} | {f(m.get('readback_wait_ms_per_frame'))} | {f(r.get('peak_rss_mb'), 1)} | "
-                         f"{f(r.get('others_cores_window'), 2)} / {f(r.get('others_cores_peak'), 2)} | "
-                         f"{f(r.get('load_before'), 2)} / {f(r.get('load_after'), 2)} |")
+            line = (f"| {scene['id']} | {row['label']} | {'yes' if counts else 'no'} | {f(m.get('fps'), 2)} | "
+                    f"{f(m.get('mean_ms'))} | {f(m.get('low1_fps'), 2)} | {m.get('over20', '-')} | {m.get('over25', '-')} | "
+                    f"{f(r.get('cpu_ms_per_frame'))} | {f(m.get('readback_wait_ms_per_frame'))} | {f(r.get('peak_rss_mb'), 1)} | "
+                    f"{f(r.get('others_cores_window'), 2)} / {f(r.get('others_cores_peak'), 2)} | "
+                    f"{f(r.get('load_before'), 2)} / {f(r.get('load_after'), 2)} |")
+            lines.append(line + telemetry_cells(r) if perf else line)
+        if perf:
+            lines.append('')
+            for row in scene.get('runs', []):
+                lines.append(f"Telemetry {record['cycle']}/{scene['id']}/{row['label']}: "
+                             + telemetry_scope(row['result']))
         lines += ['', f"**{scene['id']}: {scene.get('decision', {}).get('state', 'not run')}**", '',
                   '```json', json.dumps(scene.get('decision', {}), indent=2), '```', '']
         if scene.get('handoff'):
@@ -424,13 +451,23 @@ def write_report(config, out, record):
               '## Fixed measured references — not rerun each cycle', '',
               '| Reference / scene | Measured at | fps | mean ms | 1% low | Shared quiet rule? | Evidence |',
               '|---|---|---:|---:|---:|---|---|']
+    if perf:
+        lines[-2] += TELEMETRY_HEADER
+        lines[-1] += TELEMETRY_RULE
     for name, rows in record.get('references', {}).items():
         if not rows:
-            lines.append(f'| {name} | not yet measured | - | - | - | - | - |')
+            line = f'| {name} | not yet measured | - | - | - | - | - |'
+            lines.append(line + telemetry_cells({}) if perf else line)
         for row in rows:
             r, m = row['result'], row['result'].get('measures', {})
-            lines.append(f"| {name} | {r.get('end', '-')} | {f(m.get('fps'), 2)} | {f(m.get('mean_ms'))} | "
-                         f"{f(m.get('low1_fps'), 2)} | {r.get('shared_quiet_rule', 'unavailable')} | `{row['output']}` |")
+            line = (f"| {name} | {r.get('end', '-')} | {f(m.get('fps'), 2)} | {f(m.get('mean_ms'))} | "
+                    f"{f(m.get('low1_fps'), 2)} | {r.get('shared_quiet_rule', 'unavailable')} | `{row['output']}` |")
+            lines.append(line + telemetry_cells(r) if perf else line)
+    if perf:
+        lines += ['', TELEMETRY_NOTE]
+        for name, rows in record.get('references', {}).items():
+            for row in rows:
+                lines.append(f"Telemetry {name}/{Path(row['output']).name}: " + telemetry_scope(row['result']))
     lines += ['', '## Limits and provenance', '',
               'This is headless CPU-present timing, not scanout or GPU completion. The shared scene defines the '
               'judged metric; other columns are supporting measurements, not independent regression claims. '

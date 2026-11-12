@@ -48,6 +48,8 @@ def handoff(config, spec, good, build, finding, out):
                         '--copy', '{copy}', '--output', '{output}', '--seconds', '{seconds}',
                         '--commit', '{commit}', '--scenario', '{scenario}'],
     }
+    if build.get('profile'):
+        settings['build']['profile_files'] = list(build['profile'])
     put(destination, settings)
     command = [config['python'], '-I', '-B', str(tool), 'hunt', '--repo', config['repo'],
                '--good', good['commit'], '--bad', build['commit'], '--scenario', str(destination),

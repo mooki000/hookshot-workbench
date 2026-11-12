@@ -12,18 +12,21 @@ H=/home/mooki/Games/.hookshot-harness
 S=/home/mooki/.agents/skills
 
 for s in hookshot-workbench hookshot-pr-evidence hookshot-perf-compare hookshot-scripted-play hookshot-issue-triage \
-         hookshot-discord-updates hookshot-regression-hunt hookshot-nightly-playtest hookshot-pr-loop; do
+         hookshot-discord-updates hookshot-regression-hunt hookshot-nightly-playtest hookshot-pr-loop hookshot-perf-monitor; do
     rm -rf "$here/skills/$s"
     cp -r "$S/$s" "$here/skills/$s"
 done
-mkdir -p "$here/harness" "$here/gates" "$here/play" "$here/docs" "$here/regress" "$here/nightly"
+mkdir -p "$here/harness" "$here/gates" "$here/play" "$here/docs" "$here/regress" "$here/nightly" "$here/perf"
 cp "$H/hs-run.sh" "$H/hs-idle.sh" "$H/hs-nocore.sh" "$H/hs-pr-check.sh" "$H/hs-save.sh" "$H/hs-watch-ends2.sh" \
-   "$H/hs-watch-threads.py" "$H/hs-window.py" "$H/tools/deps-local.sh" "$here/harness/"
+   "$H/hs-watch-threads.py" "$H/hs-window.py" "$H/tools/deps-local.sh" "$H/hs-names.sh" "$H/hs_names.py" \
+   "$H/test_hs_names.py" "$H/longshot-port.py" "$H/test_longshot_port.py" "$here/harness/"
 cp "$H/playthrough/hsap.py" "$H/playthrough/hsap_file.py" "$H/playthrough/tapcheck.py" "$H/playthrough/test_hsap.py" \
    "$H/playthrough/test_hsap_file.py" "$here/play/"
 cp "$H/regress/regress.py" "$H/regress/build_case.py" "$H/regress/run_case.py" "$H/regress/test_regress.py" "$here/regress/"
+cp "$H/regress/test_longshot_names.py" "$here/regress/"
+cp "$H/perf/hs_perf.py" "$H/perf/test_hs_perf.py" "$here/perf/"
 for f in hs-nightly.py build.py common.py scenario.py monitor.py metrics.py compare.py store.py report.py hunt.py \
-         rolling.py test_compare.py test_driver.py test_rolling.py README.md; do
+         rolling.py test_compare.py test_driver.py test_rolling.py test_longshot_names.py README.md; do
     cp "$H/nightly/$f" "$here/nightly/$f"
 done
 cp /home/mooki/Code/hookshot-wt/reports/AGENT-BRIEF.md "$here/docs/agent-brief.md"

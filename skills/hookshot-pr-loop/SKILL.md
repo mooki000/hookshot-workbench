@@ -1,12 +1,17 @@
 ---
 name: hookshot-pr-loop
 description: >
-  Run the Hookshot PR loop for mooki000: test other people's pull requests on this PC, answer replies, follow new
+  Coordinate Hookshot or Longshot testing for mooki000 with the currently GitHub-backed PR loop: test other people's pull requests on this PC, answer replies, follow new
   commits, carry results across proven identical rebases, and keep PRs moving until they merge.
   Use for the PR loop or test requests; daytime card admission still needs a Linux testing request.
 ---
 
 # Hookshot PR loop
+
+**Hookshot / Longshot:** use the shared runtime-name resolver for local tests; keep skill/harness names and
+`HOOKSHOT_WB_*`. This loop's tracker URLs, collaborator/approval rules and carry proof remain **GitHub-backed**.
+Do not relabel saved GitHub threads, claims or results as Forgejo records. A verified separate forge backend is
+required; no login, credential migration, new scan/watch or remote change is implied.
 
 This is a queue of other people's work, not a bot that builds or posts. It keeps promises visible until the pull
 request merges, closes or is deliberately parked, because a test without its follow-up leaves the author waiting.
@@ -374,6 +379,13 @@ Git histories exercise ordering, exclusions, claims, state safety, priority edit
 It performs no remote claim/post, game run or compiler job. Temporary fixtures are removed by the tests.
 
 ## Workbench MCP routes
+
+After the operator setup linked in `hookshot-workbench` (private state root, catalogues, policy and registered roots),
+without an MCP client, use `uv run --project mcp hookshot-wb` from the installed workbench checkout:
+`list --json`, `call <tool> --args '<JSON object>'`, or `read '<registered URI>'`.
+Add `--profile operate` for refresh/check jobs. The catalogue's **CLI broker** column distinguishes one-shot
+readers from persistent sessions/jobs. A Job response is submission, not completion; keep the same state root,
+read its receipt, and never replay on a CLI timeout or stop the shared broker as task cleanup.
 
 Check `workbench_status()` and the installed catalogue; registered does not mean configured or authorized.
 Follow page cursors and require Job completion receipts. Pushes, posts, claims, renewals and review attestations

@@ -1,12 +1,17 @@
 ---
 name: hookshot-discord-updates
 description: >
-  Read Hookshot coordination and prepare checked team-update drafts for the main session.
+  Read Hookshot or Longshot coordination and prepare checked team-update drafts for the main session.
   The project team_chat.py route is authoritative; registered MCP readers never post or claim.
   Browser Discord is only for Main's reads and specifically named user-requested messages.
 ---
 
 # Hookshot team updates
+
+**Hookshot / Longshot:** keep skill/harness names and `HOOKSHOT_WB_*`; use the shared runtime/log resolver.
+The trusted coordination route and GitHub readers below remain tied to their original service, not automatically
+retargeted to Forgejo. Proposed login/read helpers may write credentials; protect both configuration namespaces
+and use supplied or guarded GET-only snapshots. No credential migration is authorized.
 
 **Use for:** team coordination, claims, update drafts and specifically authorized Discord messages.
 Read `hookshot-workbench`, `hookshot-pr-evidence`, and the project's authoritative
@@ -26,7 +31,7 @@ P=/home/mooki/Code/hookshot-wt/deps/python/bin/python3
 ## Current authorization (2026-11-12)
 
 The user enabled the project route and is signed in. The main session uses the existing
-session; agents never read, print, copy or edit anything under `~/.config/hookshot/`.
+session; agents never read, print, copy or edit anything under `~/.config/hookshot/` or `~/.config/longshot/`.
 Do not sign in again or inspect credentials. A failed/expired session goes to Main/the
 user, not an improvised token flow.
 
@@ -112,6 +117,13 @@ draft validation and a pure delivery-candidate matcher. It opens no browser and 
 Live team/Discord delivery, mentions, rate limits and account access are not proven by that check.
 
 ## Workbench MCP routes
+
+After the operator setup linked in `hookshot-workbench` (private state root, catalogues, policy and registered roots),
+without an MCP client, use `uv run --project mcp hookshot-wb` from the installed workbench checkout:
+`list --json`, `call <tool> --args '<JSON object>'`, or `read '<registered URI>'`.
+The coordination/CI readers below are one-shot. `evidence_bundle` needs `--profile operate` and the private
+broker; it still publishes nothing. Read the catalogue's **CLI broker** column, keep the same state root, and
+never replay on a CLI timeout or stop a shared broker as task cleanup.
 
 Check `workbench_status()` and the installed catalogue first. All listed groups are integrated, but room tools
 remain unavailable with the stock project reader: it lacks the required `--read-only`, JSON and cursor contract.

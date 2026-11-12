@@ -1,7 +1,7 @@
 ---
 name: hookshot-scripted-play
 description: >
-  Drive an owned, gated, windowless Hookshot run through the control bridge or the capability-selected hsap
+  Drive an owned, gated, windowless Hookshot or Longshot run through the control bridge or the capability-selected hsap
   drivers. Choose the sampled-state or legacy file tap, wait for fresh controllable state, send inputs, capture
   pictures, inspect steps and keep a save only after proving it resumes. Use for controller-free play, test saves,
   area tours and routes that need position. Read hookshot-workbench first.
@@ -9,16 +9,22 @@ description: >
 
 # Hookshot scripted play
 
+**Hookshot / Longshot:** keep skill, harness and `HOOKSHOT_WB_*` names. The shared resolver selects the actual
+executable, log and client; missing/mixed identities refuse. Naming proves no optional capability: the renamed main
+client lacks session `show`/`log`/`stop`; those examples require the separately supported session-layer client.
+
 **Use for:** scripted input, state samples and save-backed routes. Read `hookshot-workbench` and the agent brief.
 All game runs are windowless. Never use the upstream client's unwrapped `launch` to bypass the harness/gate.
 
-Set `WT` to the selected owned Hookshot worktree before deriving the client path.
+Set `WT` to the selected owned Hookshot or Longshot worktree before deriving the client path.
 
 ```sh
 H="$HOME/Games/.hookshot-harness"
 W="$HOME/Code/hookshot-wt"
 P="$W/deps/python/bin/python3"
-CTL="$WT/scripts/hookshot_ctl.py"
+source "$H/hs-names.sh"
+hs_names checkout "$WT" || exit
+CTL="$HS_CTL"  # scripts/hookshot_ctl.py or scripts/longshot_ctl.py, selected automatically
 ```
 
 Set `COPY`, a new `TAG`, a new evidence directory `OUT`, and a new private `LIVE` directory outside
@@ -100,7 +106,8 @@ keep streaming subscriptions on their own connection. Reconnect after an uncerta
 ### Owned session logs and shutdown
 
 A control-session `RUN` is a directory with `manifest.json` and `log.txt`. It is **not** an hs-run directory with
-`hookshot_log.txt`. Use `--run` only for a manifest made by the session layer. `show` and `log` also work after exit.
+`hookshot_log.txt` or `longshot_log.txt` (the shared reader uses `log_path`). Use `--run` only for a manifest made
+by the session layer. With that supported client, `show` and `log` also work after exit.
 
 ```sh
 "$P" -I -B "$CTL" --json --run "$RUN" show
@@ -163,14 +170,20 @@ a tap-compatible binary, a real save barrier or a visual proof.
 
 ## MCP routes
 
-Use the workbench skill's discovery/lifecycle rules. All groups below are integrated. Check the running catalogue
-and registered build/profile/save IDs before relying on any route.
+Use the workbench skill's **MCP routes** for operator setup and the canonical `uv run --project mcp hookshot-wb`
+entry. From that repository root, `call TOOL --args JSON` invokes a table tool; authorized mutations need
+`--profile operate`. Keep the same state root: separate CLI processes share the owning broker.
+A launch Job ends only when the session ends. Read `.events.events[]` / `.kind` for `bridge_ready`, then observe
+`menu` or `play` for 30 further frames using a state predicate with `stable_frames:30` before first input/capture.
+Boot input is refused. The opening cutscene reports `loading`; menu/play waits can time out during a drawn cutscene,
+and input may be refused. Inspect advancing frames/captures; do not mislabel that as a frozen bridge or replay input.
+Missing sampled-state freshness remains unknown. `broker stop` ends owned sessions, not only a client wait.
 
 | Step | Shell route | MCP tool (group; integration) | What it saves |
 |---|---|---|---|
 | Start/stop | Gated `hs-run.sh`/driver; owned runner stop | `session_launch(build_id, profile_id, wall_seconds, idempotency_key)`, `session_stop(run_id, reason, idempotency_key)` (session; integrated) | Owns disposable run, gate and stop receipt; no clean-save claim. |
 | Queue/receipt | Gate tickets, process identity and child receipt | `queue_status(device="gpu", job_id=job_id)`, `job_read(job_id)` (status; integrated) | Joins the job to its live gate request without PID guessing. |
-| State/readiness | `hookshot_ctl.py status`; driver samples | `session_state(run_id)`, `session_wait(run_id, predicate={"kind":"controllable"}, idempotency_key=key)` (session; integrated) | Reports freshness/capability and bounded predicate result. No sampled frame means unknown, not control. |
+| State/readiness | `"$CTL" status` (shared-selected Hookshot/Longshot client); driver samples | `session_state(run_id)`, `session_wait(run_id, predicate={"kind":"state","state":"menu"}, stable_frames=30, idempotency_key=key)` (session; integrated) | Separates drawable-state readiness from fresh control; use `controllable` only with sampled-state support. |
 | Input then observe | `press`/`stick`/`sequence`, then status/wait | `session_input(run_id, steps, units="frames", idempotency_key=key)`, then `session_state(run_id)` (session; integrated) | Typed units, deduplicated submission and separate effect evidence. Not a route planner. |
 | Capture/settings | `shot`, `option get/set` | `session_shot(run_id)`, `session_options_get(run_id)`, `session_options_set(run_id, values)` (session; integrated) | New capture paths and bounded settings; unsafe setting classes refuse. |
 | Read/wait for log | Session `log --lines`; `log --since --expect` | `run_logs(run_id, last_lines=40)` (evidence; integrated); **no log-wait tool** | Bounded retained reads. Keep the shell cursor wait for a new line. |

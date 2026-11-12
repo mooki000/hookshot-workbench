@@ -1,12 +1,18 @@
 ---
 name: hookshot-issue-triage
 description: >
-  Comb Hookshot's issues and pull requests for what this machine can reproduce, test or answer: refresh the survey,
+  Comb Hookshot or Longshot's issues and pull requests for what this machine can reproduce, test or answer: refresh the survey,
   score a problem the way the project asks, reproduce it windowlessly, and draft the comment.
   Use shell readers or registered workbench MCP readers; never claim or post from a worker.
 ---
 
 # Triage on Hookshot: what this machine can add
+
+**Hookshot / Longshot:** use the workbench's shared runtime/log-name selection; skill/harness names stay fixed.
+The `gh` examples and MCP GitHub readers below remain **GitHub-only**. Longshot's public Forgejo API is
+`https://git.magicbean.dev/api/v1/repos/MagicBeanDev/Longshot`; page issue/PR bodies, comments, reviews and inline
+discussions separately. GitHub query syntax is not portable. Proposed forge readers may refresh credentials and
+are not approved login, claim or posting routes.
 
 **Use for:** issue/PR surveys, reproduction and reply drafts. Read workbench first. Three frequent commands:
 
@@ -19,6 +25,9 @@ gh pr list --repo NotRexed/Hookshot --state all --search "<words>" --json number
 Read `reports/POSTED.md` and the **whole** thread, including its latest description, reviews and attachments,
 before spending a run or describing a result as a finding. A repeated known result is a repeat, not new work.
 Reports name skills read and tools used. Public drafts contain no local paths, machine tool names or agent names.
+For CPU/RAM/GPU-budget or streaming/stutter context, read `hookshot-perf-monitor`; retain selected windows,
+unavailable counters, coverage and cited suspicion rows. Missing is not zero. These are leads for human review,
+not causal, bottleneck, fixed/not-fixed or speed verdicts; timing still uses the authorized paired worker.
 
 Discover current `[Tracking]` families and open/merged PRs before choosing work. `docs/worklist.md` is the scored
 list. The **testing wanted** label permits non-collaborator PRs in the opt-in queue; claims also live in team chat, so
@@ -88,7 +97,7 @@ Reproduce on Hookshot before presenting a lead as a finding. Keep game-derived d
 ## Rules
 
 - Nothing made from the game is posted or attached: no saves, no file lists, no shader dumps. Pictures and
-  `hookshot_log.txt` are fine; keep asset names and local paths out of excerpts.
+  `hookshot_log.txt` or `longshot_log.txt` are fine after review; keep asset names and local paths out of excerpts.
 - Do not compete with a claimed fix: offer the reproduction and the evidence, and test their change.
 - Everything posted goes into `reports/POSTED.md` with what is owed afterwards.
 - Describe features from the current code/thread and inspected images, never memory.
@@ -96,6 +105,13 @@ Reproduce on Hookshot before presenting a lead as a finding. Keep game-derived d
   `hookshot-discord-updates` skill; no sign-in, claim or posting action is authorized merely by reading them.
 
 ## Workbench MCP routes
+
+After the operator setup linked in `hookshot-workbench` (private state root, catalogues, policy and registered roots),
+without an MCP client, use `uv run --project mcp hookshot-wb` from the installed workbench checkout:
+`list --json`, `call <tool> --args '<JSON object>'`, or `read '<registered URI>'`.
+Add `--profile operate` only for authorized local/run tools. The catalogue's **CLI broker** column marks
+persistent sessions/jobs versus one-shot readers. Keep the same state root; a returned Job or CLI timeout is
+not proof of completion and never permission to replay or stop a shared broker.
 
 Check `workbench_status()` and the installed catalogue. Integrated means registered code, not configured live
 access. Follow cursors; truncated bodies/attachments still need the original reader. Jobs require `job_wait` and

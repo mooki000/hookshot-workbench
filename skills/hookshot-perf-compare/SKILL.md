@@ -1,16 +1,23 @@
 ---
 name: hookshot-perf-compare
 description: >
-  Compare Hookshot builds or settings for frame time, fps, 1% low and stutter. Distinguish ordinary memory/log/image
+  Compare Hookshot or Longshot builds or settings for frame time, fps, 1% low and stutter. Distinguish ordinary memory/log/image
   observations from authorized exclusive timing. Read hookshot-workbench and hookshot-regression-hunt; use the shared
   regression worker and registered evidence adapters, never a second timing runner.
 ---
 
 # Comparing Hookshot builds or settings
 
+**Hookshot / Longshot:** use the workbench's shared name selection; preserve skill/harness/gate names and
+`HOOKSHOT_WB_*`. Require the actual donor/profile/cache identity and optional instrumentation. Name compatibility
+does not add a perf emitter or make GitHub request/CI tools Forgejo-aware.
+
 **Use for:** every speed claim or “is this switch/PR faster?”. Read `hookshot-workbench`, `hookshot-regression-hunt`
 and the current agent brief. All runs are windowless; swapchain, V-Sync, display latency and generated-frame output
 remain untested without a new explicit grant. Reports name skills, tools, sources and actual verification.
+For sampled CPU/GPU/memory or stutter context, read `hookshot-perf-monitor`; retain same-run perf/frame CSVs,
+explicit clocks/windows, missing counters and suspicion evidence. Gauge comparisons are not causation, statistical
+significance or a speed verdict; the authorized paired worker remains the timing authority.
 
 ```sh
 H="$HOME/Games/.hookshot-harness"
@@ -113,6 +120,8 @@ For profiles, preserve raw stacks and matching-copy ELF symbols. `scripts/prof.p
 
 Use the workbench skill's catalogue, configuration and Job-receipt rules. MCP evidence analysis consumes registered
 artifacts; it does not turn an ordinary run into exclusive timing. There is **no regression hunt/held-worker MCP tool**.
+After the operator setup linked in workbench, use `uv run --project mcp hookshot-wb call TOOL --args JSON` from the
+reviewed repository root. Read Job receipts; CLI timeout is not cancellation. `broker stop` ends owned work.
 
 | Step | Shell route | MCP tool (group; integration) | What it saves |
 |---|---|---|---|

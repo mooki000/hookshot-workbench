@@ -10,6 +10,9 @@ import sys
 import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import HARN, LOCAL, capture, command, env_clean, gated, put, stamp, text
+from hs_names import NameError, build_env as source_build_env, checkout_names, copy_names
+sys.path.insert(0, str(HARN / 'regress'))
+from build_case import profile_inputs
 
 
 def resolve(config, out):
@@ -100,6 +103,7 @@ def run(config, out, commit=None):
                  '-c', 'user.email=' + config['author_email'], '-C', wt, 'cherry-pick', '-x', diagnostic])
     info['source_commit'] = capture(['git', '-C', wt, 'rev-parse', 'HEAD']).strip()
     info['diagnostic_commits'] = diagnostics
+    names = checkout_names(wt)
     put(out / 'build.json', info)
     if config.get('reuse_dependencies'):
         if not os.access(config['python'], os.X_OK) or not Path(config['cpm']).is_dir():
@@ -111,8 +115,8 @@ def run(config, out, commit=None):
             raise RuntimeError('Dependency setup failed; see deps.log')
     if config.get('profile_source'):
         (wt / 'work').mkdir(exist_ok=True)
-        for name in config.get('profile_files', ['hookshot_pieces.prof', 'hot_funcs.txt', 'hot_order.txt']):
-            source, target = Path(config['profile_source']) / name, wt / 'work' / name
+        for source, name in profile_inputs(config['profile_source'], names, config.get('profile_files')):
+            target = wt / 'work' / name
             expected = file_identity(source)
             if target.exists():
                 if file_identity(target) != expected:
@@ -121,7 +125,7 @@ def run(config, out, commit=None):
                 capture(['cp', '--reflink=always', source, target])
             assert file_identity(target) == expected
     profile_env = env_clean({'TMPDIR': config['release_cache']})
-    if not (wt / 'work/hookshot_pieces.prof').is_file():
+    if not (wt / 'work' / names.profile).is_file():
         # release_parts uses gh's authenticated downloads without printing its token.
         profile_env['GH_TOKEN'] = capture(['gh', 'auth', 'token']).strip()
         rc = command([config['python'], '-I', '-B', 'scripts/release_parts.py', 'profile',
@@ -130,7 +134,7 @@ def run(config, out, commit=None):
         if rc:
             raise RuntimeError('Play profile setup failed; see profile.log')
     info['profile'] = {name: file_identity(wt / 'work' / name)
-                       for name in ('hookshot_pieces.prof', 'hot_funcs.txt', 'hot_order.txt')}
+                       for name in (names.profile, 'hot_funcs.txt', 'hot_order.txt')}
     info['toolchain'] = toolchain(config)
     info['object_cache_fresh_before_build'] = not (work / 'objcache').exists()
     if config.get('dependency_reference_commit'):
@@ -138,11 +142,13 @@ def run(config, out, commit=None):
             'git', '-C', wt, 'diff', '--name-only', config['dependency_reference_commit'], commit, '--',
             'scripts/linux/deps.sh', 'requirements.txt', 'nx2/prompt_requirements.txt']).splitlines()
     put(out / 'build.json', info)
-    build_env = ['RX_CPM=' + config['cpm'], 'HOOKSHOT_LIFT_JOBS=8', 'HOOKSHOT_KEEP_BUILD_FILES=1', 'RX_HOT_OPT=O2']
+    suffix_values = {'LIFT_JOBS': '8', 'KEEP_BUILD_FILES': '1'}
     if config.get('ngx_sdk'):
         if not Path(config['ngx_sdk']).is_dir():
             raise RuntimeError('Already accepted local upscaler SDK is missing; no license is accepted automatically')
-        build_env.append('HOOKSHOT_NGX_SDK=' + config['ngx_sdk'])
+        suffix_values['NGX_SDK'] = config['ngx_sdk']
+    build_env = ['RX_CPM=' + config['cpm'], 'RX_HOT_OPT=O2']
+    build_env += [key + '=' + value for key, value in source_build_env(wt, suffix_values).items()]
     argv = gated(['flock', config['full_build_lock'], config['build_gate'], 'env', *build_env,
                   config['python'], '-I', '-B', '-u', 'nx2/make_game.py',
                   '--romfs', config['romfs'], '--exefs', config['exefs'], '--out', staging,
@@ -167,11 +173,13 @@ def run(config, out, commit=None):
         info['status'] = 'failed'
         put(out / 'build.json', info)
         raise RuntimeError('Full build failed or missing @@done; see build.log')
+    if copy_names(staging).executable != names.executable:
+        raise NameError('built copy and selected checkout have different project identities')
     if dest.exists():
         raise RuntimeError('Night snapshot already exists; refusing to overwrite it')
     capture(['cp', '-a', '--reflink=always', staging, dest])
     (dest / '.nightly-owned').write_text(out.name + '\n')
-    info['binary_bytes'] = {name: (dest / name).stat().st_size for name in ('hookshot', 'hookshot_vk.so')}
+    info['binary_bytes'] = {name: (dest / name).stat().st_size for name in (names.executable, names.renderer)}
     info['binary_sha256'] = {name: hashlib.file_digest((dest / name).open('rb'), 'sha256').hexdigest()
                              for name in info['binary_bytes']}
     info['non_romfs_bytes'] = sum(p.stat().st_size for p in dest.rglob('*')

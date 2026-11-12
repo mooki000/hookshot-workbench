@@ -8,6 +8,7 @@ import threading
 import time
 from common import HARN, text, stamp
 from metrics import WARNING, ACTIVITY, VRAM
+from hs_names import GAME_EXECUTABLES, log_path
 
 
 def processes():
@@ -30,7 +31,7 @@ def processes():
 
 def player_games(config, records):
     root = Path(config['play_folder'])
-    return [p for p in records if Path(p['exe']).name in ('hookshot', 'hookshot.exe') and
+    return [p for p in records if Path(p['exe']).name in GAME_EXECUTABLES and
             (Path(p['exe']).is_relative_to(root) or Path(p.get('cwd', '/')).is_relative_to(root))]
 
 
@@ -56,12 +57,15 @@ def wait_for_player_idle(config, log):
             pause.wait(1)
 
 
-def resources(config, executable=None):
+def resources(config, executable=None, *, executables=()):
     mem = {k: int(v) / 1048576 for k, v in re.findall(r'^(\w+):\s*(\d+)', text('/proc/meminfo'), re.M)}
     psi = re.search(r'^full avg10=([\d.]+)', text('/proc/pressure/memory'), re.M)
     procs = processes()
-    games = [p for p in procs if Path(p['exe']).name in ('hookshot', 'hookshot.exe')]
-    mine = [p for p in games if executable and Path(p['exe']) == Path(executable)]
+    games = [p for p in procs if Path(p['exe']).name in GAME_EXECUTABLES]
+    owned = {Path(p) for p in executables}
+    if executable is not None:
+        owned.add(Path(executable))
+    mine = [p for p in games if Path(p['exe']) in owned]
     compilers = [p for p in procs if re.match(r'(?:clang|cc1|g\+\+|gcc|ld\.lld|lld-link)', p['comm'])]
     reading = {'monotonic_s': time.monotonic(), 'load': list(os.getloadavg()),
                'available_gib': mem.get('MemAvailable'), 'swap_free_gib': mem.get('SwapFree'),
@@ -176,8 +180,10 @@ class Monitor:
         self.stop = threading.Event()
         self.started = stamp()
         self.faults, self.samples, self.kernel, self.pids = [], [], [], set()
-        self.owned_executables = {str(self.copy / 'hookshot')} | {
-            str(Path(p) / 'hookshot') for p in config.get('owned_copies', [])}
+        # A build guard starts before binaries exist; enumerate names, never guess an identity.
+        self.sample_executables = {str(self.copy / name) for name in GAME_EXECUTABLES}
+        self.owned_executables = self.sample_executables | {
+            str(Path(p) / name) for p in config.get('owned_copies', []) for name in GAME_EXECUTABLES}
         self.ignored_cores = []
         self.in_play = False
         self.thread = threading.Thread(target=self.work, daemon=True)
@@ -223,7 +229,7 @@ class Monitor:
     def work(self):
         try:
             while not self.stop.is_set():
-                sample = resources(self.config, self.copy / 'hookshot')
+                sample = resources(self.config, executables=self.sample_executables)
                 self.samples.append(sample)
                 self.pids.update(sample['own_pids'])
                 with (self.out / 'samples.jsonl').open('a') as f:
@@ -238,8 +244,8 @@ class Monitor:
                 self.faults.extend(driver_faults(self.kernel))
                 if self.watchdog.poll() is not None:
                     self.watchdog_ended()
-                logfile = self.run / 'hookshot_log.txt'
-                if logfile.is_file():
+                logfile = log_path(self.run)
+                if logfile is not None:
                     with logfile.open(errors='replace') as f:
                         f.seek(self.log_offset)
                         fresh = f.read()

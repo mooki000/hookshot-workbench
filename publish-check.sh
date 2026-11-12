@@ -17,7 +17,7 @@ fail=0
 say() { printf '%-5s %s\n' "$1" "$2"; [ "$1" = FAIL ] && fail=1; return 0; }
 files=$(git ls-files --cached --others --exclude-standard 2>/dev/null || find . -type f -not -path './.git/*' | sed 's|^\./||')
 
-bad=$(echo "$files" | grep -v -x -E 'mcp/pyproject\.toml|mcp/uv\.lock' | grep -i -E '\.(sav|nup|nsp|xci|nca|nso|bin|zs|sarc|byml|bfres|bntx|bwav|bars|bfevfl|spv|so|dll|exe|appimage|o|a|pyc|pickle|gz|zip|7z|json|jsonl|toml|csv|png|jpe?g|webm|mp4|log)$|(^|/)(runs|saves|world|segments|routes)/|hookshot_options\.ini|hookshot_env\.txt' || true)
+bad=$(echo "$files" | grep -v -x -E 'mcp/pyproject\.toml|mcp/uv\.lock' | grep -i -E '\.(sav|nup|nsp|xci|nca|nso|bin|zs|sarc|byml|bfres|bntx|bwav|bars|bfevfl|spv|so|dll|exe|appimage|o|a|pyc|pickle|gz|zip|7z|json|jsonl|toml|csv|png|jpe?g|webm|mp4|log)$|(^|/)(runs|saves|world|segments|routes)/|(hookshot|longshot)_(options\.ini|env\.txt)' || true)
 [ -z "$bad" ] && say OK "no game file, save, data file, picture or log among $(echo "$files" | grep -c .) files" || { say FAIL "files that must not be here:"; echo "$bad" | sed 's/^/      /'; }
 
 big=$(echo "$files" | grep -v -x -E 'mcp/pyproject\.toml|mcp/uv\.lock' | while read -r f; do [ -f "$f" ] && [ "$(stat -c %s "$f")" -gt 204800 ] && echo "$f"; done)

@@ -1,12 +1,16 @@
 ---
 name: hookshot-nightly-playtest
 description: >
-  Observe the existing Hookshot rolling-main watch, read retained evidence, run its offline checks,
+  Observe the existing Hookshot or Longshot rolling-main watch, read retained evidence, run its offline checks,
   and resume explicitly authorized nightly work without repeating completed steps.
   Compare controlled play/logs/images and prepare unposted drafts. Read workbench and perf-compare first.
 ---
 
 # Hookshot nightly playtest
+
+**Hookshot / Longshot:** the shared helper selects runtime/client/profile/log names; preserve skill/harness names,
+`HOOKSHOT_WB_*` and watch ownership. A rename does not retarget `origin/main`, release downloads, searches or saved
+cycles to Forgejo. Require matching source/profile provenance; never create a replacement watch or migrate credentials.
 
 **Use for:** the existing rolling-main watch, game-free nightly checks and retained regression reports.
 Set paths before using the commands:
@@ -113,10 +117,9 @@ not independent unconfirmed regression claims.
 Each scene table shows fps, mean frame ms, 1% low, frames over 20/25 ms, all-thread game CPU ms/frame from the shared
 adapter, readback wait/frame, peak RSS, competing CPU use, loads and whether each run counts. Fixed reference rows
 retain their actual measurement dates and are not rerun every cycle; a reference not yet built/measured says so.
-Source-stamp checks are per arm. A confirmed range is handed to `regress.py` with its real scene and observed bands;
-the tool stops and **starts no hunt**. Hunt endpoints carry `regress-source.txt`, and the shared source-aware build/run
-adapters validate each midpoint against its own stamp. An older shared adapter must be upgraded before that handoff
-is used.
+Source-stamp checks are per arm. New copies/reference snapshots receive a checked `regress-source.txt`; historical
+receipts without it remain readable under their recorded log expectation, never rewritten. A confirmed range is handed
+to `regress.py` with its actual scene/bands; the tool **starts no hunt**. Execution requires the source-aware adapter.
 
 All definitions, references, results and reports are private under `nightly-local/rolling/`; measurements also enter
 the existing results database. Raw/copies retain seven calendar dates, while dated fixed-reference values persist.
@@ -161,7 +164,8 @@ The game-free mode never launches a scenario or timer. With `gpu_scenarios_enabl
 game-free. The game-facing behavior below describes implemented code, **not live-validated behavior**.
 
 Each scenario gets a fresh save copy from `hs-save.sh`, and `hs-run.sh` makes the played copy again. No library save
-is modified. The selected commit's `scripts/hookshot_ctl.py` supplies the bridge; there is no second protocol client.
+is modified. Shared checkout selection supplies `scripts/hookshot_ctl.py` or `scripts/longshot_ctl.py` from the
+selected commit; there is no second protocol client, and the name alone proves no optional bridge capability.
 Waiting in the GPU queue does not consume the scenario's play deadline. A load requires the game-reported map,
 expected map when specified, play state, loading false and no event unless explicitly allowed: a title movie with
 many draws does not count as play. Actions/replies are retained. Press durations use game frames; scenario waits
@@ -190,6 +194,9 @@ stored suite, and completed scenarios; it archives interrupted attempts before r
 `run --resume-build --night ID --game-free` reuses only that ID's completed build, not a completed suite.
 It refuses an existing database night unless `--resume` is used. Inspect `state.json` and receipts first;
 never overwrite an earlier attempt or repeat successful setup.
+
+Optional scenario `perf: true` (rolling: `run.perf: true`) retains sampled system context. Read `hookshot-perf-monitor`;
+telemetry does not replace raw frame windows, quiet rules or paired decisions. Unsupported builds may emit no CSV.
 
 ## Read a report
 
@@ -310,12 +317,20 @@ No timer has been armed or exercised by this lane.
 
 ## Public sync list
 
-Publish only `nightly/hs-nightly.py`, `build.py`, `common.py`, `scenario.py`, `monitor.py`, `metrics.py`, `compare.py`,
-`store.py`, `report.py`, `hunt.py`, `rolling.py`, `test_compare.py`, `test_driver.py`, `test_rolling.py`, `README.md`, and this skill's `SKILL.md`.
+The explicit `sync-from-live.sh` manifest also carries shared name/perf dependencies and their tests. Publish only `nightly/hs-nightly.py`, `build.py`, `common.py`, `scenario.py`, `monitor.py`, `metrics.py`, `compare.py`,
+`store.py`, `report.py`, `hunt.py`, `rolling.py`, `test_compare.py`, `test_driver.py`, `test_rolling.py`,
+`test_longshot_names.py`, `README.md`, and this skill's `SKILL.md`.
 Never sync configuration, JSON scenarios, baselines, databases, raw runs, reports, drafts, images, saves, game copies,
 caches or generated client data.
 
 ## Workbench MCP routes
+
+After the operator setup linked in `hookshot-workbench` (private state root, catalogues, policy and registered roots),
+without an MCP client, run `uv run --project mcp hookshot-wb call nightly_status --args '{}'` from the installed
+workbench checkout. `list --json` lists actual tools; `read 'workbench://nightly/<cycle>'` reads a registered report.
+These readers are one-shot. The catalogue's **CLI broker** column marks persistent session/job tools; use
+`--profile operate` only for authorized work, keep the same state root and read the returned Job's receipt.
+Do not replay on a CLI timeout or stop the shared broker as task cleanup.
 
 Check `workbench_status()` and the installed catalogue. All groups below are integrated; live backends
 still need operator registration. MCP does not start a rolling watch or arm a timer. Pushes, posts and claims remain

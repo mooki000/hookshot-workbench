@@ -3,6 +3,7 @@
 
 Public text: no scenario or game data lives here. The scenario JSON's `run` object supplies the save folder, the
 input script, the environment, the measurement window and the log lines the run must (or must not) show.
+`run.perf: true` opts into perf.csv; sampled context is separate from decision measures and quiet checks.
 
   run_case.py --copy <game copy> --commit <sha> --output <new run folder> --scenario <local json> --seconds <n>
 
@@ -15,6 +16,7 @@ game used `quiet_cores` processor cores or more on average (3) or any 5-second s
 import argparse
 import collections
 import csv
+import importlib.util
 import io
 import json
 import math
@@ -24,7 +26,12 @@ import re
 import signal
 import statistics
 import subprocess
+import sys
 import time
+
+HARN = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(HARN if (HARN / 'hs_names.py').is_file() else HARN / 'harness'))
+from hs_names import ALL_SETTINGS, LOG_VERSION, copy_names, log_path
 
 GATE_MARK = 'HSGATE_IN_GATE'
 LOG_REPLAY = re.compile(r"vk: a frame's replay time \(ms\): (.*)$")
@@ -33,7 +40,6 @@ LOG_GPU = re.compile(r"vk: GPU time ([\d.]+) ms a frame")
 LOG_WAITS = re.compile(r"vk: a frame: ([\d.]+) draws left out \(not ready\), ([\d.]+) waits for shaders or pipelines \(([\d.]+) ms\)")
 LOG_VRAM = re.compile(r"VRAM ([\d.]+) of ([\d.]+) GB")
 LOG_READBACKS = re.compile(r"vk: readbacks of GPU results: (\d+) of 3000 waited for their write-back, ([\d.]+) ms each")
-LOG_VERSION = re.compile(r"hookshot (v\S+|nightly\S+)[^\n]*")
 
 
 def date(fmt='-Iseconds'):
@@ -248,13 +254,34 @@ def present_shift(frames, ms, rows, tail=30):
     return max((base, base + 1, base - 1, base + 2, base - 2), key=score)
 
 
-def analyse(run, settings, start_monotonic_ns=0, seconds=0):
+def system_telemetry(run, *, start=None, end=None):
+    """Optional sampled context; never import a reader from the caller or run folder."""
+    if not (Path(run) / 'perf.csv').is_file():
+        return None
+    try:
+        path = HARN / 'perf' / 'hs_perf.py'
+        spec = importlib.util.spec_from_file_location('hookshot_system_telemetry', path)
+        reader = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reader)
+        return reader.attach(run, start=start, end=end)
+    except Exception:
+        # A missing/broken optional reader must not invalidate the existing run evidence.
+        return {'artifact': 'perf.csv', 'status': 'cannot_tell', 'error': 'reader_unavailable',
+                'notice': 'Sampled context unavailable; existing decisions are unchanged.'}
+
+
+def analyse(run, settings, start_monotonic_ns=0, seconds=0, *, receipt=None):
     run = Path(run)
     frames, times, ms = read_frames(run / 'frames.csv')
     anchor, lo, hi, gaps = window_of(times, ms, settings)
     indexes = [i for i, t in enumerate(times) if lo <= t <= hi]
     assert len(indexes) > 2 and times[indexes[-1]] - times[indexes[0]] >= 0.9 * (hi - lo), 'short measurement window'
     result = statistics_of([ms[i] for i in indexes[1:]])
+    if receipt is not None:
+        # Exclude the first interval as above, using raw frames.csv IDs, not game presents.
+        telemetry = system_telemetry(run, start=f"frame:{frames[indexes[1]]}", end=f"frame:{frames[indexes[-1]]}")
+        if telemetry is not None:
+            receipt['system_telemetry'] = telemetry
     # (present numbers: the log's and the probe's count. Without a window the frame log is one behind them.)
     shift = 1
     if settings.get('window') and (run / 'present.csv').exists():
@@ -268,8 +295,9 @@ def analyse(run, settings, start_monotonic_ns=0, seconds=0):
     if (run / 'readbacks.csv').exists():
         result.update(readback_metrics(run / 'readbacks.csv', first, last))
     blocks = []
-    if (run / 'hookshot_log.txt').exists():
-        more, blocks = log_metrics((run / 'hookshot_log.txt').read_text(errors='replace'), first, last)
+    logfile = log_path(run)
+    if logfile is not None:
+        more, blocks = log_metrics(logfile.read_text(errors='replace'), first, last)
         result.update(more)
     if (run / 'present.csv').exists():
         result.update(present_metrics(run / 'present.csv', start_monotonic_ns, seconds))
@@ -362,7 +390,7 @@ def setup(copy, output, settings, seconds):
     env = dict(settings.get('env', {}))
     assert not (copy / 'mods').exists() and 'HOS_MODS' not in os.environ and 'HOS_MODS' not in env, \
         'mods must be absent for an unmodified comparison'
-    for name in ('hookshot_options.ini', 'hookshot_env.txt'):
+    for name in ALL_SETTINGS:
         assert settings.get('copy_settings_allowed') or not (copy / name).exists(), name + ' in the copy would change the run'
     output.mkdir(parents=True, exist_ok=True)
     assert not (output / 'start.txt').exists(), 'refusing to overwrite a run'
@@ -370,6 +398,11 @@ def setup(copy, output, settings, seconds):
         env['RX_VK_READBACK_CSV'] = str(output / 'readbacks.csv')
     if settings.get('framelog'):
         env['RX_VK_FRAMELOG'] = str(output / 'framelog.bin')
+    if settings.get('perf'):
+        # Match hs-run.sh --perf, including the effective values retained in the case receipt.
+        env['RX_VK_PERF_LOG'] = str(output)
+        env['RX_VK_PERF_FIELDS'] = 'all'
+        (output / 'perf').touch()
     (output / 'copy.txt').write_text(str(copy) + '\n')
     (output / 'seconds.txt').write_text(str(seconds) + '\n')
     (output / 'input.txt').write_text(settings.get('input', ''))
@@ -482,7 +515,8 @@ def run_case(copy, output, scenario, seconds, commit):
     # (inside the gate of the device the run is for: the card's, or with `intel` the other device's own)
     mark = 'HSGATE_IN_INTEL_GATE' if settings.get('intel') else GATE_MARK
     assert os.environ.get(mark), 'must be called inside the hold of the device the run is for (' + mark + ')'
-    assert copy.name.startswith('.hookshot-h-') and (copy / 'hookshot').is_file(), 'not a built harness copy'
+    names = copy_names(copy)
+    assert copy.name.startswith('.hookshot-h-') and (copy / names.executable).is_file(), 'not a built harness copy'
     if settings.get('window'):
         switch = Path(settings.get('window_switch', str(Path.home() / 'Games/.hookshot-harness/window-ok')))
         assert switch.exists(), 'window authorization switch is absent'
@@ -498,7 +532,7 @@ def run_case(copy, output, scenario, seconds, commit):
     with (output / 'wrapper.log').open('w') as log:
         process = subprocess.Popen([wrapper, '--inner', str(output)], stdout=log, stderr=subprocess.STDOUT)
         while process.poll() is None:
-            pid = pid or game_pid(process.pid, copy / 'hookshot')
+            pid = pid or game_pid(process.pid, copy / names.executable)
             if stop['asked'] and pid:
                 try:
                     os.kill(pid, signal.SIGTERM)
@@ -534,7 +568,8 @@ def run_case(copy, output, scenario, seconds, commit):
     journal, kernel = kernel_lines(start_journal, end_journal, bool(settings.get('intel')))
     (output / 'kernel.txt').write_text(journal)
     result.update(kernel)
-    text = (output / 'hookshot_log.txt').read_text(errors='replace') if (output / 'hookshot_log.txt').exists() else ''
+    logfile = log_path(output)
+    text = logfile.read_text(errors='replace') if logfile is not None else ''
     version = LOG_VERSION.search(text)
     code = int(read('exit.txt')) if read('exit.txt') else -1
     stamp = source_stamp(copy)
@@ -546,6 +581,7 @@ def run_case(copy, output, scenario, seconds, commit):
                   mods={'folder_absent': not (copy / 'mods').exists(), 'HOS_MODS_unset': 'HOS_MODS' not in os.environ,
                         'log': [line[:200] for line in text.splitlines() if re.search(r'\bmods?\b', line, re.I)][:10]})
     try:
+        assert logfile is not None and logfile.name == names.log, 'run log does not match the copy project'
         assert rc == 0 and code == (0 if settings.get('prepare') else 124), 'run did not reach its intended end'
         assert re.search(settings.get('device_pattern', r'vk: device 0: NVIDIA GeForce RTX 4090'), text), 'wrong or missing device'
         assert kernel['kernel_errors'] is not None, 'kernel journal coverage is unknown'
@@ -563,7 +599,7 @@ def run_case(copy, output, scenario, seconds, commit):
             assert '@@done shaders' in text, 'preparation incomplete'
             measures, blocks = {}, []
         else:
-            measures, blocks = analyse(output, settings, start_ns, seconds)
+            measures, blocks = analyse(output, settings, start_ns, seconds, receipt=result)
             window = None
             if (output / 'present.csv').exists():
                 window = present_window(output / 'present.csv', measures['first_frame'], measures['last_frame'])

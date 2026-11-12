@@ -1,11 +1,11 @@
 #!/bin/bash
-# One unattended Hookshot run on the RTX 4090 (or, with --intel, the Intel UHD 770), through its gate. Written
+# One unattended Hookshot or Longshot run on the RTX 4090 (or, with --intel, the Intel UHD 770), through its gate. Written
 # 2026-11-10 (HsWorkbench); --window 2026-11-11 (WindowRuns).
 #
 #   hs-run.sh <copy> <tag> <seconds> [--window] [--exclusive] [--whole] [--priority] [--intel] [--from <s>]
-#             [--input '<presses>'] [--user <folder>] [--keep-user] [--prepare] [--mem-max <v>] [NAME=VALUE ...]
+#             [--input '<presses>'] [--user <folder>] [--keep-user] [--prepare] [--perf] [--mem-max <v>] [NAME=VALUE ...]
 #
-#   <copy>      a built game folder /home/mooki/Games/.hookshot-h-<name> (hookshot, image.bin, romfs/)
+#   <copy>      a built game folder /home/mooki/Games/.hookshot-h-<name> (hookshot OR longshot, image.bin, romfs/)
 #   <tag>       the run's name: everything goes to <copy>/runs/<tag>/ (replaced if it exists)
 #   <seconds>   wall time from the game's start; then SIGTERM (SIGKILL 20 s later). Exit 124 = ended at the wall
 #   --window    a real window on the user's Hyprland instead of a headless run: for what needs a swapchain and the
@@ -24,23 +24,25 @@
 #   --from <s>  frame statistics only from <s> seconds after the first present on (skip title, load, warm-up)
 #   --input     HOS_INPUT_SCRIPT, e.g. '20:A,25:A,30:PLUS' (docs/development.md: Input for scripted runs); with it
 #               HOS_INPUT_EXCLUSIVE=1, so only the script drives the game
-#   --user      the save folder to start from (a Hookshot --user folder: save/<user id>/...); copied, never used in
+#   --user      the save folder to start from (either game's --user folder: save/<user id>/...); copied, never used in
 #               place. Default: <copy>/user-template if it exists, else an empty folder (a fresh profile)
 #   --keep-user keep the run's throw-away user folder (default: only its save/ is kept, for a look afterwards)
-#   --prepare   run `hookshot --prepare-shaders` instead of the game (what a build's last step and a first start do:
+#   --prepare   run the detected executable with --prepare-shaders (what a build's last step and a first start do:
 #               the shader list translated and the shipped pipelines built, into the copy's caches), same environment
 #   --mem-max <v> the game in a transient systemd user scope with MemoryMax=<v> and no swap (e.g. 28G): the kernel
 #               ends it there instead of the machine running out (Intel's driver took 23-28 GB preparing shaders,
 #               issues 999/1001/775)
+#   --perf      optional sampled system context in runs/<tag>/perf.csv; no change to summary statistics
+#               (older builds may write no file). Uses the run folder and all fields, after NAME=VALUE.
 #   NAME=VALUE  more of the game's switches for this run (over the defaults below)
 #
 # The run: headless (HOS_HEADLESS=1: no window, no Wayland or X11 connection: WAYLAND_DISPLAY and DISPLAY unset),
 # muted (HOS_AUDIO=0, SDL's dummy sound driver), NVIDIA's Vulkan driver only (VK_DRIVER_FILES) and RX_VK_DEVICE=0 =
 # the RTX 4090 (the log's device list is checked after the run), no update check, no Discord status, no physical
-# controller in the background, an empty HOS_ENV_FILE (a hookshot_env.txt in the copy is not read). The driver's
+# controller in the background, an empty HOS_ENV_FILE (the copy's hookshot_env.txt/longshot_env.txt is not read). The driver's
 # shader caches stay in the copy (.nv-cache, .mesa-cache, .xdg-cache), XDG_DATA_HOME is the run's folder: nothing is
 # written to the user's ~/.local/share, ~/.cache or ~/.config. Pictures every RX_VK_SHOT_EVERY presents (300) at
-# 1280x720 into runs/<tag>/shots, the log into runs/<tag>/hookshot_log.txt, and every game present's time into
+# 1280x720 into runs/<tag>/shots, the log into runs/<tag>/<project>_log.txt, and every game present's time into
 # runs/<tag>/present.csv (HOS_PRESENT_TRACE, host/nn_vi.c: the game's own presents, frame limiter included, CPU
 # clock). A populated RX_VK_FRAME_LOG (runs/<tag>/frames.csv) supplies renderer intervals: headless-renderer after
 # offscreen submission, or swapchain with --window. Otherwise present.csv supplies game intervals (three or seven columns).
@@ -77,6 +79,7 @@
 #   kernel=unknown nvrm=unknown, with the journal receipt in kernel-status.json and retained lines in kernel.txt.
 set -uo pipefail
 H=/home/mooki/Games/.hookshot-harness
+source "$(dirname -- "${BASH_SOURCE[0]}")/hs-names.sh"
 NV_ICD=/usr/share/vulkan/icd.d/nvidia_icd.json
 INTEL_ICD=/usr/share/vulkan/icd.d/intel_icd.json
 
@@ -93,6 +96,7 @@ EOF
 if [ "${1:-}" = --inner ]; then
     R=${2:?}
     copy=$(cat "$R/copy.txt")
+    hs_names copy "$copy" || exit 2
     seconds=$(cat "$R/seconds.txt")
     date '+%F %T' > "$R/start.txt"
     cut -d' ' -f1-3 /proc/loadavg > "$R/load-before.txt"
@@ -109,7 +113,7 @@ if [ "${1:-}" = --inner ]; then
         unset WAYLAND_DISPLAY
         export HOS_HEADLESS=1
     fi
-    export HOS_AUDIO=0 SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy HOOKSHOT_NO_UPDATE_CHECK=1 HOS_DISCORD=0 \
+    export HOS_AUDIO=0 SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy "${HS_ENV_PREFIX}_NO_UPDATE_CHECK=1" HOS_DISCORD=0 \
         HOS_INPUT_BACKGROUND=0 VK_DRIVER_FILES=$NV_ICD RX_VK_DEVICE=0 \
         RX_VK_SHOTS="$R/shots" RX_VK_FRAME_LOG="$R/frames.csv" HOS_PRESENT_TRACE="$R/present.csv" HOS_ENV_FILE="$R/env-file.txt" \
         __GL_SHADER_DISK_CACHE_PATH="$copy/.nv-cache" MESA_SHADER_CACHE_DIR="$copy/.mesa-cache" \
@@ -118,12 +122,13 @@ if [ "${1:-}" = --inner ]; then
     [ -f "$R/intel" ] && export VK_DRIVER_FILES=$INTEL_ICD
     if [ -s "$R/input.txt" ]; then export HOS_INPUT_SCRIPT="$(cat "$R/input.txt")" HOS_INPUT_EXCLUSIVE=1; fi
     while IFS= read -r kv; do [ -n "$kv" ] && export "$kv"; done < "$R/extra-env.txt"
+    [ -f "$R/perf" ] && export RX_VK_PERF_LOG="$R" RX_VK_PERF_FIELDS=all
     if [ -f "$R/window" ]; then   # (after the caller's switches: nothing of theirs moves the window off its class or socket)
         unset HOS_HEADLESS DISPLAY
         export WAYLAND_DISPLAY=$wsock XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)} \
             SDL_APP_ID=$WCLASS SDL_VIDEO_WAYLAND_WMCLASS=$WCLASS SDL_VIDEODRIVER=wayland SDL_VIDEO_DRIVER=wayland
     fi
-    env | LC_ALL=C sort | grep -E '^(HOS_|RX_|HOOKSHOT_|VK_|SDL_|__GL_|MESA_|XDG_|HSGATE_IN_GATE)' > "$R/env-used.txt"
+    env | LC_ALL=C sort | grep -E '^(HOS_|RX_|HOOKSHOT_|LONGSHOT_|VK_|SDL_|__GL_|MESA_|XDG_|HSGATE_IN_GATE)' > "$R/env-used.txt"
     t0=$(date +%s.%N)
     cd "$copy" || exit 1
     gargs=(--user "$R/user")
@@ -131,7 +136,7 @@ if [ "${1:-}" = --inner ]; then
     pre=()
     [ -s "$R/memmax" ] && pre=(systemd-run --user --scope -q -p MemoryMax="$(cat "$R/memmax")" -p MemorySwapMax=0)
     if [ -f "$R/window" ]; then
-        "${pre[@]}" timeout --signal=TERM --kill-after=20 "$seconds" ./hookshot "${gargs[@]}" > "$R/hookshot_log.txt" 2>&1 < /dev/null &
+        "${pre[@]}" timeout --signal=TERM --kill-after=20 "$seconds" "./$HS_EXE" "${gargs[@]}" > "$R/$HS_LOG" 2>&1 < /dev/null &
         tpid=$!
         python3 -I "$H/hs-window.py" watch "$R" "$tpid" > "$R/window-watch.log" 2>&1 < /dev/null &
         wpid=$!
@@ -139,7 +144,7 @@ if [ "${1:-}" = --inner ]; then
         rc=$?
         wait "$wpid"
     else
-        "${pre[@]}" timeout --signal=TERM --kill-after=20 "$seconds" ./hookshot "${gargs[@]}" > "$R/hookshot_log.txt" 2>&1 < /dev/null
+        "${pre[@]}" timeout --signal=TERM --kill-after=20 "$seconds" "./$HS_EXE" "${gargs[@]}" > "$R/$HS_LOG" 2>&1 < /dev/null
         rc=$?
     fi
     echo "$rc" > "$R/exit.txt"
@@ -157,10 +162,11 @@ copy=$(cd "$1" 2>/dev/null && pwd) || { echo "hs-run.sh: no folder $1" >&2; exit
 tag=$2 seconds=$3
 shift 3
 case "$copy" in /home/mooki/Games/.hookshot-h-*) ;; *) echo "hs-run.sh: $copy is not a harness copy (/home/mooki/Games/.hookshot-h-*)" >&2; exit 2 ;; esac
-[ -x "$copy/hookshot" ] && [ -f "$copy/image.bin" ] && [ -d "$copy/romfs" ] || { echo "hs-run.sh: $copy has no built game" >&2; exit 2; }
+hs_names copy "$copy" || exit 2
+[ -x "$copy/$HS_EXE" ] && [ -f "$copy/image.bin" ] && [ -d "$copy/romfs" ] || { echo "hs-run.sh: $copy has no built game" >&2; exit 2; }
 [[ $tag =~ ^[A-Za-z0-9._-]+$ ]] || { echo "hs-run.sh: tag: letters, digits, . _ - only" >&2; exit 2; }
 [[ $seconds =~ ^[0-9]+$ ]] || usage
-window=0 excl=() from=0 input="" usersrc="" keep=0 prepare=0 intel=0 memmax="" extra=()
+window=0 excl=() from=0 input="" usersrc="" keep=0 prepare=0 perf=0 intel=0 memmax="" extra=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --window) window=1; shift ;;
@@ -172,6 +178,7 @@ while [ $# -gt 0 ]; do
         --user) usersrc=$(cd "${2:?}" 2>/dev/null && pwd) || { echo "hs-run.sh: no folder $2" >&2; exit 2; }; shift 2 ;;
         --keep-user) keep=1; shift ;;
         --prepare) prepare=1; shift ;;
+        --perf) perf=1; shift ;;
         --intel) intel=1; shift ;;
         --mem-max) memmax=${2:?}; [[ $memmax =~ ^[0-9]+[KMGT]?$ ]] || usage; shift 2 ;;
         *=*) extra+=("$1"); shift ;;
@@ -190,7 +197,7 @@ fi
 # 1 GB, against 8.5 to 8.9 GB), and the gate lets a second game in beside one on the promise that both have the default
 # picture. So such a run asks the gate for the whole card. The picture the game will use (host/nn_applet.c, read at its
 # start): HOS_OUTPUT_RES (a NAME=VALUE of this call, else this call's environment), and only without it output_res= in
-# the copy's hookshot_options.ini. Larger means "<w>x<h>" with more pixels than 2048x1152, or anything this cannot
+# the copy's detected options file. Larger means "<w>x<h>" with more pixels than 2048x1152, or anything this cannot
 # read as a size within it (the game would fall back to its own size; this does not bet on that). The numbers saved
 # by old versions: 0 the game's own and 3 1920x1080 are within, 1 2 4 5 are larger. Read when the run is asked: a
 # run that changes the copy's options file while this one waits is not seen.
@@ -207,7 +214,7 @@ picture_large() {   # $1: the copy; then this call's NAME=VALUE arguments
     if [ "$given" = 1 ]; then size_large "$v"; return; fi
     while IFS= read -r v; do
         size_large "$v" && return 0
-    done < <(sed -n 's/^output_res=//p' "$copy/hookshot_options.ini" 2>/dev/null | tr -d '\r')
+    done < <(sed -n 's/^output_res=//p' "$copy/$HS_OPTIONS" 2>/dev/null | tr -d '\r')
     return 1
 }
 # A windowed run also takes the whole card (main session, at the merge of the window and the two-slot versions): what
@@ -224,6 +231,7 @@ echo "$copy" > "$R/copy.txt"
 echo "$seconds" > "$R/seconds.txt"
 printf '%s' "$input" > "$R/input.txt"
 [ "$prepare" = 1 ] && : > "$R/prepare"
+[ "$perf" = 1 ] && : > "$R/perf"
 [ "$intel" = 1 ] && : > "$R/intel"
 [ "$window" = 1 ] && : > "$R/window"
 printf '%s' "$memmax" > "$R/memmax"
@@ -246,7 +254,7 @@ if [ ! -f "$R/exit.txt" ]; then
 fi
 [ "$keep" = 1 ] || find "$R/user" -mindepth 1 -maxdepth 1 ! -name save -exec rm -rf {} +
 home_writes=""
-for p in "$HOME/.local/share/hookshot" "$HOME/.cache/hookshot-builder"; do [ -e "$p" ] && home_writes="$home_writes $p"; done
+for p in "$HOME/.local/share/$HS_PROJECT" "$HOME/.cache/$HS_PROJECT-builder"; do [ -e "$p" ] && home_writes="$home_writes $p"; done
 line=$(python3 -I -B - "$R" "$from" "$tag" "$home_writes" "$intel" "$H/regress/run_case.py" <<'PY'
 import csv, glob, importlib.util, json, os, re, subprocess, sys
 R, frm, tag, home = sys.argv[1], float(sys.argv[2]), sys.argv[3], sys.argv[4].strip()
@@ -256,6 +264,7 @@ def rd(name):
 spec = importlib.util.spec_from_file_location("hs_run_kernel", sys.argv[6])
 kernel_reader = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(kernel_reader)
+from hs_names import log_path
 kernel_text, kernel_info = kernel_reader.kernel_lines(rd("start.txt"), rd("end.txt"), sys.argv[5] == "1")
 with open(os.path.join(R, "kernel.txt"), "w") as f:
     f.write(kernel_text)
@@ -289,7 +298,7 @@ if shots:
     except OSError:
         size = "?"
 mb = sum(os.path.getsize(p) for p in shots) / 1e6
-with open(os.path.join(R, "hookshot_log.txt"), errors="replace") as f:
+with log_path(R, required=True).open(errors="replace") as f:
     log = f.read()
 fatal = len(re.findall(r"FATAL", log))
 lost = len(re.findall(r"(?i)device lost|VK_ERROR_DEVICE_LOST", log))

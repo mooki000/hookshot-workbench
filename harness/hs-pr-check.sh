@@ -105,7 +105,7 @@ done
 
 # 4. nothing made from the game, no build output
 files=$(git -C "$repo" diff --name-only "$base" "$branch")
-badf=$(echo "$files" | grep -E '(^|/)work/|\.(nup|nsp|xci|nca|nso|sav|bin|bwav|bars|byml|zs|sarc|bfres|bntx|webm|spv|so|dll|exe|AppImage|o|a)$|hookshot_options\.ini|hookshot_log' | grep -v -E '_spv\.h$' || true)
+badf=$(echo "$files" | grep -E '(^|/)work/|\.(nup|nsp|xci|nca|nso|sav|bin|bwav|bars|byml|zs|sarc|bfres|bntx|webm|spv|so|dll|exe|AppImage|o|a)$|(hookshot|longshot)_options\.ini|(hookshot|longshot)_log' | grep -v -E '_spv\.h$' || true)
 [ -z "$badf" ] && say OK "no game file, save, log or build output among $(echo "$files" | grep -c .) changed files" || { say FAIL "files that must not be in a pull request:"; echo "$badf" | head -n 8 | sed 's/^/      /'; }
 big=$(git -C "$repo" diff --numstat "$base" "$branch" | awk '$1 == "-" {print $3}')
 [ -z "$big" ] || { say WARN "binary files in the diff (look at each):"; echo "$big" | head -n 8 | sed 's/^/      /'; }

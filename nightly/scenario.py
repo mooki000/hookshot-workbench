@@ -1,4 +1,7 @@
-"""Run a private JSON scenario through hs-run and the selected build's control client."""
+"""Run a private JSON scenario through hs-run and the selected build's control client.
+
+Optional `perf: true` collects perf.csv as sampled context, never a decision metric.
+"""
 from pathlib import Path
 import hashlib
 import importlib.util
@@ -12,6 +15,7 @@ import threading
 from common import HARN, capture, env_clean, gated, put, slug, stamp, stop_group, text
 from monitor import Monitor, resources, unsafe
 from metrics import collect
+from hs_names import checkout_names, copy_names, log_path
 
 
 class SafetyStop(RuntimeError):
@@ -19,7 +23,8 @@ class SafetyStop(RuntimeError):
 
 
 def client_module(config):
-    path = Path(config['worktree']) / 'scripts/hookshot_ctl.py'
+    root = Path(config['worktree'])
+    path = root / checkout_names(root).control_client
     spec = importlib.util.spec_from_file_location('nightly_control', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -141,7 +146,7 @@ class Run:
                 self.meta.setdefault('shot_bursts', []).append(names)
             elif op == 'assert_log':
                 import re
-                matches = re.findall(step['pattern'], text(self.run / 'hookshot_log.txt'))
+                matches = re.findall(step['pattern'], text(log_path(self.run)))
                 if len(matches) < step.get('minimum', 1):
                     raise RuntimeError('required log evidence not found: ' + step['pattern'])
                 self.meta['checks'].append('log evidence: ' + step['pattern'] + ' x' + str(len(matches)))
@@ -194,6 +199,7 @@ class Run:
     def execute(self):
         if not self.held and not self.config.get('gpu_scenarios_enabled', False):
             raise RuntimeError('nightly GPU scenarios are disabled; only game-free work is authorized')
+        copy_names(self.copy)
         self.out.mkdir(parents=True, exist_ok=True)
         (self.out / 'shots').mkdir(exist_ok=True)
         put(self.out / 'scenario.json', self.spec)
@@ -228,6 +234,8 @@ class Run:
             argv += ['--window']
         if self.spec.get('whole'):
             argv += ['--whole']
+        if self.spec.get('perf'):
+            argv += ['--perf']
         argv += ['HOS_CONTROL=' + str(sock), 'HOS_INPUT_EXCLUSIVE=1', 'RX_VK_SHOT_EVERY=600']
         argv += [str(k) + '=' + str(v) for k, v in self.spec.get('settings', {}).items()]
         launch, launch_env = gated(argv), env_clean()
@@ -245,6 +253,8 @@ class Run:
             extras = ['HOS_CONTROL=' + str(sock), 'HOS_INPUT_EXCLUSIVE=1', 'RX_VK_SHOT_EVERY=600']
             extras += [str(k) + '=' + str(v) for k, v in self.spec.get('settings', {}).items()]
             (self.run / 'extra-env.txt').write_text('\n'.join(extras) + '\n')
+            if self.spec.get('perf'):
+                (self.run / 'perf').touch()  # --inner selects the run folder/fields after extra environment
             launch = [str(HARN / 'hs-run.sh'), '--inner', str(self.run)]
             launch_env = os.environ.copy()
             for key in ('GH_TOKEN', 'GITHUB_TOKEN', 'OPENAI_API_KEY'):
@@ -257,7 +267,7 @@ class Run:
         self.monitor.start()
         try:
             # Queue waiting does not consume the scenario's game-time deadline.
-            while not (self.run / 'hookshot_log.txt').exists():
+            while log_path(self.run) is None:
                 self.check()
                 self.monitor.stop.wait(.25)
             self.start = time.monotonic()
@@ -330,6 +340,8 @@ class Run:
                                         '--debugger-arguments=-batch -ex "set debuginfod enabled off" -ex "thread apply all bt"'],
                                        capture_output=True, text=True, timeout=90, env=env_clean({'DEBUGINFOD_URLS': ''}))
                     (self.out / f'backtrace-{pid}.txt').write_text(p.stdout + p.stderr)
+        if (self.run / 'perf.csv').is_file():
+            shutil.copy2(self.run / 'perf.csv', self.out / 'perf.csv')
         put(self.out / 'result.json', result)
         return result
 

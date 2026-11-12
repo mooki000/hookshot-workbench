@@ -5,9 +5,14 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import time
 
 HARN = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(HARN if (HARN / 'hs_names.py').is_file() else HARN / 'harness'))
+from hs_names import PROJECTS
+
+GAME_ENV_PREFIXES = tuple(project.upper() + '_' for project in PROJECTS)
 LOCAL = HARN / 'nightly-local'
 GATE_VARS = ('HSGATE_SLOT_DIR', 'HSGATE_INTEL_SLOT_DIR', 'HSGATE_SLOT_TEST',
              'HSGATE_SLOT_NODESKTOP', 'HSGATE_IN_GATE')
@@ -26,7 +31,7 @@ def put(path, value):
 
 
 def text(path):
-    return Path(path).read_text(errors='replace') if Path(path).is_file() else ''
+    return Path(path).read_text(errors='replace') if path is not None and Path(path).is_file() else ''
 
 
 def env_clean(extra=None, *, game=False):
@@ -35,7 +40,7 @@ def env_clean(extra=None, *, game=False):
         env.pop(key, None)
     if game:
         for key in list(env):
-            if key.startswith(('HOS_', 'RX_', 'HOOKSHOT_', 'SDL_', 'VK_', 'MESA_', '__GL_')):
+            if key.startswith(('HOS_', 'RX_', *GAME_ENV_PREFIXES, 'SDL_', 'VK_', 'MESA_', '__GL_')):
                 del env[key]
     env.update(extra or {})
     return env

@@ -4,6 +4,37 @@ from collections import Counter
 import json
 import subprocess
 from common import HARN, capture, put, slug, stamp
+from hs_names import copy_names
+
+
+TELEMETRY_HEADER = ' GPU temp mean (C) | GPU use mean (%) | Busiest thread mean (%) | Sampled RSS peak (MiB) |'
+TELEMETRY_RULE = '---:|---:|---:|---:|'
+TELEMETRY_NOTE = ('Sampled system context only (unweighted, not decision metrics): GPU readings are device-wide; '
+                  'busiest-thread 100% is one logical CPU; RSS includes shared pages. "na" is unavailable. '
+                  'Sample clocks and inclusive windows are per run; frame IDs are raw frames.csv IDs, not game presents. '
+                  'The separate telemetry receipt and perf.csv retain capture completion and coverage.')
+
+
+def telemetry_cells(result):
+    metrics = (result.get('system_telemetry') or {}).get('metrics', {})
+    cells = []
+    for name, stat, divisor in (('gpu_temp_c', 'mean', 1), ('gpu_use_pct', 'mean', 1),
+                                ('cpu_thread_pct', 'mean', 1), ('rss_bytes', 'max', 1048576)):
+        value = metrics.get(name, {}).get(stat)
+        cells.append('na' if value is None else f'{value / divisor:.1f}')
+    return ' ' + ' | '.join(cells) + ' |'
+
+
+def telemetry_scope(result):
+    telemetry = result.get('system_telemetry')
+    if telemetry is None:
+        return 'na (perf.csv unavailable)'
+    window = telemetry.get('window') or {}
+    # Export only clock/coverage fields, never the reader's local source path or raw input.
+    scope = {key: window.get(key) for key in
+             ('clock', 'sample_clock', 'column', 'start', 'end', 'inclusive', 'first_frame', 'last_frame', 'samples')}
+    scope['clock'] = window.get('clock') or telemetry.get('clock')
+    return json.dumps(scope)
 
 
 def report(local, night, build, tests, test_diff, results, findings, status, error=None):
@@ -29,8 +60,17 @@ def report(local, night, build, tests, test_diff, results, findings, status, err
         lines += [('No established regression. A first gameplay night only seeds its baseline; it cannot establish historical speed or image stability.'
                    if results else 'No gameplay scenarios ran. No gameplay baseline or GPU regression claim exists.'), '']
     lines += ['## Scenario evidence', '', '| Scenario | Result | Save | Time (s) | Timings judged? |', '|---|---|---|---:|---|']
+    perf = any(r.get('system_telemetry') is not None for r in results)
+    if perf:
+        lines[-2] += TELEMETRY_HEADER
+        lines[-1] += TELEMETRY_RULE
     for r in results:
-        lines.append(f"| {r['id']} | {r['status']} | {r.get('save') or 'fresh profile'} | {r.get('elapsed_game_s') or 0:.1f} | {'no: disturbed' if r['disturbed'] else 'yes'} |")
+        line = f"| {r['id']} | {r['status']} | {r.get('save') or 'fresh profile'} | {r.get('elapsed_game_s') or 0:.1f} | {'no: disturbed' if r['disturbed'] else 'yes'} |"
+        lines.append(line + telemetry_cells(r) if perf else line)
+    if perf:
+        lines += ['', TELEMETRY_NOTE]
+        for r in results:
+            lines.append(f"Telemetry {r['id']}: " + telemetry_scope(r))
     for r in results:
         lines += ['', f"### {r['id']}", '', f"Checks: {'; '.join(r.get('checks', [])) or 'none completed'}.",
                   f"Error: {r.get('error', 'none')}", '```text', r.get('summary', 'No wrapper summary.'), '```',
@@ -108,9 +148,10 @@ def enrich(config, night, build, finding, spec, good, out):
         finding['hunt'] = handoff(config, spec, good, build, finding, out)
     draft = Path(config['drafts']) / f'nightly-{night}-{slug(finding["scenario"])}-{slug(finding["kind"])}.md'
     draft.parent.mkdir(parents=True, exist_ok=True)
+    names = copy_names(build['copy']) if spec.get('form') != 'build' else None
     lines = [f'# Draft — {finding["scenario"]}: {finding["kind"]}', '',
              'Draft only; inspect the evidence and duplicate search before publication.', '',
-             '### Hookshot version', build['commit'], '', '### What kind of problem', 'Something else', '',
+             '### ' + (names.executable.title() if names else 'Game') + ' version', build['commit'], '', '### What kind of problem', 'Something else', '',
              '### What happened', '```json', json.dumps(finding, indent=2), '```', '',
              '### Where in the game', spec.get('description', spec['id']), '',
              '### How often', 'Once so far; any confirmation evidence is recorded above.', '',
@@ -118,7 +159,7 @@ def enrich(config, night, build, finding, spec, good, out):
              '### CPU, RAM and operating system', finding.get('hardware', config.get('hardware', 'Unavailable in the recorded environment.')), '',
              '### Changes from the defaults', '```json', json.dumps(spec.get('settings', {}), indent=2), '```', '',
              '### Other software hooked into the game', 'No, nothing hooked in. Automated control and trace switches are recorded.', '',
-             '### hookshot_log.txt', finding.get('log', 'See the scenario evidence directory in the night report.'), '',
+             '### ' + (names.log if names else 'Game log'), finding.get('log') or 'See the scenario evidence directory in the night report.', '',
              '### Screenshots or video', 'Collected locally; visual review and selection required, nothing attached automatically.', '',
              '### Before you send it', '- [ ] Confirm still present on the newest release.',
              '- [ ] Read the saved open-issue and PR search and select an existing thread when appropriate.',
@@ -216,9 +257,18 @@ def tracking_draft(config, record, out, baseline=None):
              'Quiet eligibility: other work <3 cores average, no approximately five-second sample >6; judged-arm '
              'repeats within 5%. One-minute load is reported, not used as that eligibility test.', '',
              'Run identifiers below name the originating cycle/hold; fixed-release rows retain their original dates.']
+    perf = any(row['result'].get('system_telemetry') is not None
+               for scene in record.get('scenes', []) for row in scene.get('runs', [])) or any(
+                   row['result'].get('system_telemetry') is not None
+                   for scene in (baseline or {}).get('scenes', []) for row in scene.get('baseline_runs', []))
+    if perf:
+        lines += ['', TELEMETRY_NOTE]
     table_header = [
         '| Scene | Hold / run / build | Ended | Counts? | FPS | Mean ms | 1% low FPS | >20 / >25 ms | CPU ms/frame, all threads | Readback wait ms/frame | Peak RSS MiB | Other cores mean / peak | Load before / after |',
         '|---|---|---|---|---:|---:|---:|---|---:|---:|---:|---|---|']
+    if perf:
+        table_header[0] += TELEMETRY_HEADER
+        table_header[1] += TELEMETRY_RULE
 
     def eligible(result):
         return result.get('valid') is True and result.get('disturbed') is False and not result.get('kernel_errors')
@@ -232,14 +282,20 @@ def tracking_draft(config, record, out, baseline=None):
         for i, row in enumerate(runs, 1):
             result, m = row['result'], row['result'].get('measures', {})
             counts = eligible(result)
-            lines.append(f"| {scene_id} | `{cycle_id}/{scene_id}`; {Path(row.get('output', f'run-{i}')).name}: "
-                         f"`{row['commit'][:12]}` ({row['role']}) | {result.get('end', '-')} | "
-                         f"{'yes' if counts else '**dropped**'} | {fmt(m.get('fps'), 2)} | {fmt(m.get('mean_ms'))} | "
-                         f"{fmt(m.get('low1_fps'), 2)} | {m.get('over20', '-')} / {m.get('over25', '-')} | "
-                         f"{fmt(result.get('cpu_ms_per_frame'))} | {fmt(m.get('readback_wait_ms_per_frame'))} | "
-                         f"{fmt(result.get('peak_rss_mb'), 1)} | {fmt(result.get('others_cores_window'), 2)} / "
-                         f"{fmt(result.get('others_cores_peak'), 2)} | {fmt(result.get('load_before'), 2)} / "
-                         f"{fmt(result.get('load_after'), 2)} |")
+            line = (f"| {scene_id} | `{cycle_id}/{scene_id}`; {Path(row.get('output', f'run-{i}')).name}: "
+                    f"`{row['commit'][:12]}` ({row['role']}) | {result.get('end', '-')} | "
+                    f"{'yes' if counts else '**dropped**'} | {fmt(m.get('fps'), 2)} | {fmt(m.get('mean_ms'))} | "
+                    f"{fmt(m.get('low1_fps'), 2)} | {m.get('over20', '-')} / {m.get('over25', '-')} | "
+                    f"{fmt(result.get('cpu_ms_per_frame'))} | {fmt(m.get('readback_wait_ms_per_frame'))} | "
+                    f"{fmt(result.get('peak_rss_mb'), 1)} | {fmt(result.get('others_cores_window'), 2)} / "
+                    f"{fmt(result.get('others_cores_peak'), 2)} | {fmt(result.get('load_before'), 2)} / "
+                    f"{fmt(result.get('load_after'), 2)} |")
+            lines.append(line + telemetry_cells(result) if perf else line)
+        if perf:
+            lines.append('')
+            for i, row in enumerate(runs, 1):
+                lines.append(f"Telemetry {cycle_id}/{scene_id}/{Path(row.get('output', f'run-{i}')).name}: "
+                             + telemetry_scope(row['result']))
 
     for scene in record.get('scenes', []):
         append_runs(scene['id'], scene.get('runs', []), record['cycle'])

@@ -1,12 +1,12 @@
 # hookshot-workbench
 
 The tools, test harness and agent skills I use to build, run, test and measure
-[Hookshot](https://github.com/NotRexed/Hookshot) (the static recompilation of the Switch 2 remake of *Ocarina of Time*)
-on Linux. I'm sharing them so other contributors can see how my test results are made, reuse what helps, and build on
-it. It is not part of Hookshot and not endorsed by its maintainers.
+[Hookshot](https://github.com/NotRexed/Hookshot) and its continuation
+[Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) on Linux. I'm sharing them so other contributors can
+check and reuse the methods. This workbench is separate from both projects and is not endorsed by their maintainers.
 
 **No game files are here, and nothing made from them:** no dump, no saves, no built game, no data read out of the
-game's files. You need your own legally obtained game and your own Hookshot build.
+game's files. You need your own legally obtained game and your own Hookshot or Longshot build.
 
 I work with coding agents (Claude, and GPT-6 Astra). The `skills/` are the instructions those agents follow on my machine, and most of
 the scripts were written by them under those rules, then run and checked here. The commits say so in their trailers.
@@ -15,19 +15,23 @@ the scripts were written by them under those rules, then run and checked here. T
 
 | Folder | What | Start with |
 |---|---|---|
-| `skills/hookshot-workbench` | How to build Hookshot from source on Arch, run it unattended, test and debug it: the commands, the times they take, the traps | `SKILL.md` |
+| `skills/hookshot-workbench` | Owned builds, windowless runs, name selection, checks and registered MCP routes | `SKILL.md` |
 | `skills/hookshot-pr-evidence` | The standard for a pull request and for anything posted: the claim, the overlap search, the evidence to collect while working, the body's form | `SKILL.md`, `scripts/pr_overlap.py`, `scripts/panels.sh` |
 | `skills/hookshot-perf-compare` | Comparing two builds or settings honestly: runs in turn, a quiet machine, per-run tables, what counts as a difference | `SKILL.md` |
+| `skills/hookshot-perf-monitor` | Read sampled CPU/GPU/memory context and `perf.csv`; suspicions and gauge comparisons are not speed verdicts | `SKILL.md` |
 | `skills/hookshot-scripted-play` | Playing without a controller: inputs and state samples through the control bridge, the file driver for older builds, saves at story points | `SKILL.md` |
 | `skills/hookshot-issue-triage` | Reading an issue or someone else's pull request and reproducing it on this hardware | `SKILL.md` |
-| `skills/hookshot-discord-updates` | Posting claims and pull request updates to the project's Discord as me, through my own signed-in browser tab: the fixed forms, the checks before a post, what I see first. Discord's terms do not allow automating a user account; I accepted that for a few short posts a day, and you should decide for yourself | `SKILL.md`, `scripts/discord_tab.mjs` |
+| `skills/hookshot-discord-updates` | Guarded coordination reads and checked drafts; the main session posts through the project tool, not routine browser automation | `SKILL.md`, `scripts/discord_tab.mjs` |
 | `skills/hookshot-regression-hunt` | Finding which merged pull request made a build worse: show the difference first with the same measuring code in both builds, test named suspects by revert, then bisect | `SKILL.md` |
 | `skills/hookshot-nightly-playtest` | Building the project's nightly tag from source each night, running its checks, and comparing the result with the nights before; what a first night can and cannot say | `SKILL.md` |
-| `harness/` | The run wrapper and its helpers | `hs-run.sh` |
+| `skills/hookshot-pr-loop` | The existing GitHub-backed request queue, ownership, replies and verified evidence carry | `SKILL.md` |
+| `harness/` | Run/check helpers, shared runtime-name selection and local commit porting | `hs-run.sh`, `hs_names.py`, `longshot-port.py` |
 | `gates/` | Queues that let many test runs share one GPU and one CPU without hurting each other or the desktop | `hs-gpu-slot` |
 | `play/` | Step drivers that play on a running game: one for the control bridge's state samples, one for older builds with the state file; the driver is chosen explicitly | `hsap.py`, `hsap_file.py` |
 | `regress/` | The regression hunt's engine and its two adapters (build a candidate, run a scenario), with their game-free tests | `regress.py` |
-| `nightly/` | The nightly's driver (build, the checks, the comparison with earlier nights, the report) and a rolling test of each new main; its game scenarios are written but have never run on the game | `hs-nightly.py`, `rolling.py`, `README.md` |
+| `nightly/` | Catalogue/rolling drivers, retained reports and game-free checks; each report names its actual runtime coverage | `hs-nightly.py`, `rolling.py`, `README.md` |
+| `perf/` | Optional telemetry CSV reader and game-free contract tests | `hs_perf.py` |
+| `mcp/` | Registered tools, CLI and private broker; operator setup is required | `README.md`, `CATALOGUE.md` |
 | `docs/agent-brief.md` | The rules every agent on my machine reads first | |
 
 ### The harness
@@ -35,8 +39,9 @@ the scripts were written by them under those rules, then run and checked here. T
 - **`harness/hs-run.sh <game copy> <tag> <seconds> [options] [NAME=VALUE ...]`**: one unattended run, headless by
   default, through the GPU gate. It leaves everything in `<copy>/runs/<tag>/`: the log, pictures every N presents, the
   frame log, and one summary line (exit, frames, mean and 1% low, slow frames, fatal and device-lost lines, kernel
-  driver lines, the load before and after). `--intel` runs on the integrated GPU, `--window` opens a real window for
-  what needs a swapchain, `--input` plays a press script, `--user` uses a throwaway save folder.
+  driver lines, the load before and after). `--intel` selects the integrated GPU, `--input` plays a press script,
+  `--user` copies a disposable save, and `--perf` requests optional sampled context. A new explicit grant is needed
+  for the existing `--window` mechanism; a leftover switch file is not permission.
 - **`harness/hs-idle.sh <command>`**: runs the game-free checks (`tests/run_all.py`) in the idle scheduling class, three
   at a time, never beside a timing run, and with core dumps switched off.
 - **`harness/hs-nocore.sh <command>`**: runs one command with core dumps off. Hookshot's checks crash three fixture
@@ -55,6 +60,9 @@ the scripts were written by them under those rules, then run and checked here. T
   run. The library is not here: saves are game data.
 - **`harness/deps-local.sh <worktree>`**: fetches what a source build needs on Arch into one folder, from the pins of
   Hookshot's own `scripts/linux/deps.sh`, without touching the system.
+- **`harness/hs-names.sh` / `hs_names.py`**: select executable, log, profile and source-verified build variables from
+  a checkout/copy, refusing missing or mixed identity. Skill names, harness paths and `HOOKSHOT_WB_*` stay unchanged.
+  Runtime naming does not port GitHub release/CI/request backends to Forgejo or migrate credentials.
 
 ### The gates
 
@@ -106,15 +114,11 @@ player's own folder. Saves, scenarios and results stay on the machine.
 
 ### A rolling test of each new main
 
-`nightly/hs-nightly.py rolling` is one cycle: fetch main once and pin its head (the same head as the last cycle: write
-"unchanged" and stop), build it in full with the build's time recorded, prepare its shaders, give each scene one
-unmeasured run, then measure new, previous, new, previous in one exclusive hold per scene with the regression tool's
-adapter and quiet rule. It calls something a regression only when both pairs point the same way and the gap is
-outside the repeats' spread; then it writes the hand-over file for `regress/` and stops. It starts no hunt, posts
-nothing and installs no timer: `rolling --check` starts a cycle when main has moved and three hours have passed, and
-`rolling --watch` repeats that check while it runs. The player's-folder rule holds for the whole cycle. Its decisions
-are tested on made-up numbers (`nightly/test_rolling.py`); the builds have run, a measuring cycle on the game has
-not yet.
+`nightly/hs-nightly.py rolling` pins a head, builds it, warms the configured scenes, then measures
+new / previous / new / previous with the shared regression worker and quiet rule. It writes a handoff and stops
+on a confirmed regression; it starts no hunt or timer and posts nothing. Automatic checks require a moved head
+and three hours, or the six-hour fresh-build deadline even on an unchanged head. The player's-folder rule governs
+the whole cycle. Read the retained cycle report for what actually ran; offline checks are not gameplay or timing proof.
 
 ## What is not here, and why
 

@@ -1,13 +1,17 @@
 ---
 name: hookshot-regression-hunt
 description: >
-  Prove a Hookshot regression, test a named suspect by switch or revert, test a proposed fix, then bisect a confirmed
+  Prove a Hookshot or Longshot regression, test a named suspect by switch or revert, test a proposed fix, then bisect a confirmed
   range with the shared regression worker. Cover frame time, stutter, startup, memory observations, drawing and
   pass/fail checks without confusing ordinary runs with authorized timing. Read hookshot-workbench and
   hookshot-perf-compare first. Use registered MCP evidence readers, not a second hunt runner.
 ---
 
 # Finding a Hookshot regression
+
+**Hookshot / Longshot:** the shared worker selects executable, profile, settings and existing log names; missing
+or mixed identities refuse. Preserve skill/harness names, gates and `HOOKSHOT_WB_*`. GitHub request/CI readers
+remain GitHub-only; a renamed binary is neither a Forgejo backend nor a timing grant.
 
 **Use for:** “which change caused this?”, a named suspect, a proposed fix or a confirmed nightly regression.
 Read `hookshot-workbench`, `hookshot-perf-compare` and the current agent brief. Read `hookshot-pr-evidence` before
@@ -30,8 +34,9 @@ stay local. Set `REPO`, full `GOOD`/`BAD` commits, `SCENARIO` and a new output d
    stacked on a squash-merged PR. Do not attach old-head results to a moved head.
 2. Record both binary hashes, source stamps, settings, release/profile identity and cache state. The log's source
    stamp is not a Git commit. A two-setting test on one binary is not an old/new build comparison.
-3. Use immutable owned copies without `mods`, `HOS_MODS`, `hookshot_options.ini` or `hookshot_env.txt`, unless an
-   explicitly reviewed scenario records intentional copy settings. Match scene, save, input, output size, cap and
+3. Use immutable owned copies without `mods`, `HOS_MODS`, `hookshot_options.ini` / `longshot_options.ini` or
+   `hookshot_env.txt` / `longshot_env.txt` (the shared `ALL_SETTINGS` inventory), unless an explicitly reviewed
+   scenario records intentional copy settings. Match scene, save, input, output size, cap and
    upscaler. Warm each scene/mode unmeasured first; copy caches only from an idle finished donor.
 4. Plan without a game or build:
 
@@ -170,8 +175,11 @@ Use `--help` for `regress.py`, `build_case.py` and `run_case.py`; `_hold` itself
 
 ## MCP routes
 
-Use the workbench skill's discovery/configuration and completion rules. Integrated means the group is in the integration
-branch; inspect the live catalogue. Registered evidence is required. No tool here runs a bisect or grants timing holds.
+Use the workbench skill's discovery/configuration and completion rules. Integrated means registered server code,
+not a configured backend. Inspect the live catalogue. No tool here runs a bisect or grants timing holds.
+After the operator setup linked in workbench, use `uv run --project mcp hookshot-wb list --json`, `call TOOL --args JSON`
+or `read workbench://policy` from the reviewed repository root. Jobs persist in the broker; retain their receipts.
+Neither `--profile operate` nor `broker status` grants a hold; `broker stop` ends owned work.
 
 | Step | Shell route | MCP tool (group; integration) | What it saves |
 |---|---|---|---|
