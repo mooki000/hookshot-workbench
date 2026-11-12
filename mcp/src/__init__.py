@@ -1,0 +1,1 @@
+"""Hookshot workbench MCP operations."""
