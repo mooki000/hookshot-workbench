@@ -296,6 +296,7 @@ async def submit_impl(deps, operation, request, idempotency_key):
         if operation == "build_start":
             run = deps.registry.create_run(state=State.QUEUED, build=Build(commit=request["commit"], profile_id=request["profile_id"]),
                 config_hash=plan_hash, policy_revision=policy.revision)
+            deps.registry.own_run(job.job_id, run.run_id)
             run_ids = [run.run_id]
             deps.registry.update_job(job.job_id, run_ids=run_ids)
         worker_config = {key: getattr(deps.config, key) for key in ("state_root", "build_gate", "dependency_python",
