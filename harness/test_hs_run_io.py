@@ -53,5 +53,14 @@ class OutputIOTests(original.HarnessExitTests):
         self.assertIn('exit=23', (self.copy / 'runs/log-directory/summary.txt').read_text())
 
 
+    def test_tee_failure_preserves_nonstandard_exit_and_does_not_append(self):
+        self.gate()
+        self.executable(self.bin / 'tee', '#!/bin/sh\n/usr/bin/tee "$@"\nexit 37\n')
+        result = self.run_wrapper([self.copy, 'tee-failure', '2'])
+        self.assertEqual(result.returncode, 37, 'tee status was lost or normalized')
+        self.assertIn('exit=23', (self.copy / 'runs/tee-failure/summary.txt').read_text())
+        self.assertFalse((self.harness / 'runs.log').exists(), 'failed tee must not be appended')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
