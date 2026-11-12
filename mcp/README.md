@@ -217,6 +217,8 @@ uv run python -m src.generate_readme --check
 
 ## Bounds and evidence
 
+- A driver allocation exception requires a named allocator/status/API source signature. A generic
+  `NV_ERR_NO_MEMORY` at another location is unknown and requires stopping; it is not a blanket exemption.
 - Job pages: default 25, maximum 100. Event pages: default 50, maximum 100; `next_cursor` is the last observed
   sequence, not an offset. Events are append-only, at most 16 KiB each. Progress text is at most 2,048 characters.
 - Queue pages: default 50, maximum 100 waiters per lane; queue/yielded entries share a page cursor. At most 10,000

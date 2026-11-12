@@ -205,6 +205,10 @@ def test_allocation_and_repeat_boundaries():
     assert classify_kernel(triple, True)["stop_required"] is True
     assert classify_kernel(triple, None)["stop_required"] is None
     assert classify_kernel(["NVRM: unfamiliar"], False)["unknown"] == 1
+    for unfamiliar in ("NVRM: NV_ERR_NO_MEMORY unexpected-location", "NVRM: NV_ERR_NO_MEMORY",
+                       "NVRM: NV_ERR_NO_MEMORY _memdescAllocInternal @ mem_descXc"):
+        result = classify_kernel([unfamiliar], False)
+        assert result["unknown"] == 1 and result["allocation_lines"] == 0 and result["stop_required"] is True
     assert classify_kernel(["xe tile error"], False)["faults"] == 1
     assert classify_kernel(["last message repeated 2 times"], False)["unknown"] == 1
 
