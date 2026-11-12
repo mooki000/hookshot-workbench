@@ -199,6 +199,7 @@ async def test_fault_classification_and_unknown_journal(edeps):
 def test_allocation_and_repeat_boundaries():
     triple = ["NVRM: NV_ERR_NO_MEMORY _memdescAllocInternal @ mem_desc.c",
               "NVRM: rmStatus @ system_mem.c", "NVRM: pRmApi->Alloc @ nv_gpu_ops.c"]
+    triple = ["2026-01-01T00:00:00+00:00 " + line for line in triple]
     assert classify_kernel(triple, False)["stop_required"] is False
     assert classify_kernel(triple * 3, False)["allocation_events"] == 3
     assert classify_kernel(triple * 4, False)["stop_required"] is True
@@ -209,6 +210,11 @@ def test_allocation_and_repeat_boundaries():
                        "NVRM: NV_ERR_NO_MEMORY _memdescAllocInternal @ mem_descXc"):
         result = classify_kernel([unfamiliar], False)
         assert result["unknown"] == 1 and result["allocation_lines"] == 0 and result["stop_required"] is True
+    for incomplete in (triple[:1], triple[:2], [line.split(" ", 1)[1] for line in triple],
+                       [triple[0], triple[1].replace("00:00:00", "00:00:01"), triple[2]],
+                       [triple[0], triple[1].replace("+00:00", "+01:00"), triple[2]]):
+        observed = classify_kernel(incomplete, False)
+        assert observed["allocation_lines"] == 0 and observed["unknown"] > 0 and observed["stop_required"]
     assert classify_kernel(["xe tile error"], False)["faults"] == 1
     assert classify_kernel(["last message repeated 2 times"], False)["unknown"] == 1
 

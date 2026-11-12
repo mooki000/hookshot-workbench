@@ -303,8 +303,8 @@ uv run python -m src.generate_readme --check
 
 ## Bounds and evidence
 
-- A driver allocation exception requires a named allocator/status/API source signature. A generic
-  `NV_ERR_NO_MEMORY` at another location is unknown and requires stopping; it is not a blanket exemption.
+- A driver allocation exception requires the complete named allocator/status/API triple in the same observed second.
+  Missing timestamps, partial triples and generic `NV_ERR_NO_MEMORY` at another location remain unknown and require stopping.
 - Live owned logs have incomplete artifact metadata with unknown size/digest. After exit, a new complete artifact
   version becomes the Run's current log; prior metadata stays in the registry. A cursor from the old version is stale.
 - Job pages: default 25, maximum 100. Event pages: default 50, maximum 100; `next_cursor` is the last observed
