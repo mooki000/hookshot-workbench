@@ -33,7 +33,9 @@ def stage(root):
 
 class PublicationTests(unittest.TestCase):
     def test_explicit_skill_map_and_logical_cross_references(self):
-        self.assertEqual(len(publish.SKILL_MAP), 10)
+        self.assertEqual(len(publish.SKILL_MAP), 12)
+        self.assertEqual({live for live, public in publish.SKILL_MAP.items() if live == public},
+                         {'ls-function-map', 'ls-skill-upkeep'})
         for live, public in publish.SKILL_MAP.items():
             original = f'name: {live}\nRead `{live}` and skill://{live}.\nSee skills/{live}/SKILL.md.\n'
             expected = f'name: {public}\nRead `{public}` and skill://{public}.\nSee skills/{public}/SKILL.md.\n'
@@ -87,10 +89,12 @@ class PublicationTests(unittest.TestCase):
             with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(root)}):
                 pairs = publish.files()
             destinations = {str(destination) for _, destination in pairs}
-            self.assertEqual(len(pairs), 57)
+            self.assertEqual(len(pairs), 59)
             self.assertIn('harness/ls-port.py', destinations)
             self.assertIn('regress/test_runtime_names.py', destinations)
             self.assertIn('nightly/test_runtime_names.py', destinations)
+            self.assertIn('skills/ls-function-map/SKILL.md', destinations)
+            self.assertIn('skills/ls-skill-upkeep/SKILL.md', destinations)
             self.assertNotIn('mcp/pyproject.toml', destinations)
             self.assertTrue(all('hookshot' not in destination for destination in destinations))
 
@@ -148,6 +152,25 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual((checkout / 'harness/hs-run.sh').read_bytes(), before)
             self.assertEqual(protected.read_text(), 'unchanged')
             self.assertTrue(all(p.read_bytes() == data for p, data in original.items() if p.name != 'hs-run.sh'))
+
+    def test_identity_skills_keep_helpers_and_map_links_without_editing_live_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = stage(root / 'stage'); checkout = root / 'checkout'; checkout.mkdir()
+            skill = source / 'skills/ls-skill-upkeep'
+            original = ('---\nname: ls-skill-upkeep\n---\nRead skill://hookshot-workbench and `hookshot-pr-evidence`.\n'
+                        'Run /home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh.\n')
+            (skill / 'SKILL.md').write_text(original)
+            helper = skill / 'check_skills.py'; helper.write_text('print("synthetic checker")\n'); helper.chmod(0o755)
+            with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(source)}), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(publish.publish(checkout), 0)
+                self.assertEqual(publish.publish(checkout, check=True), 0)
+            published = checkout / 'skills/ls-skill-upkeep'
+            self.assertIn('Read skill://ls-workbench and `ls-pr-evidence`.', (published / 'SKILL.md').read_text())
+            self.assertIn('/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh.', (published / 'SKILL.md').read_text())
+            self.assertEqual((published / 'check_skills.py').read_bytes(), helper.read_bytes())
+            self.assertEqual((published / 'check_skills.py').stat().st_mode & 0o777, 0o755)
+            self.assertTrue((checkout / 'skills/ls-function-map/SKILL.md').is_file())
+            self.assertEqual((skill / 'SKILL.md').read_text(), original)
 
     def test_relocation_is_literal_and_skips_private_and_linked_files(self):
         with tempfile.TemporaryDirectory() as temporary:

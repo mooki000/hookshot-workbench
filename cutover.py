@@ -71,7 +71,7 @@ def idle_locks(paths=LOCKS):
 def renames(home):
     home = Path(home)
     result = [(home / '.agents/skills' / old, home / '.agents/skills' / new)
-              for old, new in publish.SKILL_MAP.items()]
+              for old, new in publish.SKILL_MAP.items() if old != new]
     harness = home / HOST_NAMES[0][0]
     for old, new in publish.FILE_MAP.items():
         folders = ('regress', 'nightly') if old.startswith('test_') and old.endswith('_names.py') else ('',)

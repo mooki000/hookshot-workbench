@@ -26,7 +26,9 @@ external contracts are in `mcp/src/game_literals.py`; this rename does not broad
 existing game-branch prefix. `publish.py` owns the explicit live-to-public tables; `cutover.py`
 owns the deferred host paths and the shared locks it must never replace.
 
-The function-map pages under `docs/oot/` are unchanged. Runtime logs, executables, libraries,
+Main through `8226792` is merged without rewriting its function-map rows or tool changes.
+Its two new LS skills are identity entries in the publication map; only the ten older live skills need renaming.
+Runtime logs, executables, libraries,
 profiles, shader/cache files, port-source filenames, game environment switches and external URLs
 keep their exact spelling. Live skill paths, the harness, clone/worktree paths, player/configuration
 protection paths and coordination locks still name objects on this PC. No live migration has run.
@@ -56,6 +58,8 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["docs/agent-brief.md", "/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/pr_overlap.py", 1, "Still-installed physical skill folder or documented live-prefix map; only published logical skill IDs have changed."]
 ["docs/agent-brief.md", "/home/mooki/Code/Hookshot", 3, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["docs/agent-brief.md", "/home/mooki/Code/hookshot-workbench", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["docs/agent-brief.md", "/home/mooki/Code/hookshot-workbench/docs/oot/", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["docs/agent-brief.md", "/home/mooki/Code/hookshot-workbench/docs/oot/fnmap.py", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["docs/agent-brief.md", "/home/mooki/Code/hookshot-wt/", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["docs/agent-brief.md", "/home/mooki/Code/hookshot-wt/main-tools", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["docs/agent-brief.md", "/home/mooki/Code/hookshot-wt/reports/", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
@@ -380,6 +384,11 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["skills/ls-discord-updates/scripts/discord_tab.mjs", "/Games/.hookshot-harness/discord.json", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-discord-updates/scripts/discord_tab.mjs", "/Games/.hookshot-harness/pr-check-forbidden.txt", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-discord-updates/scripts/discord_tab.mjs", "~/Games/.hookshot-harness/discord.json", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["skills/ls-function-map/SKILL.md", "/home/mooki/Code/hookshot-workbench/docs/oot/", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["skills/ls-function-map/SKILL.md", "/home/mooki/Code/hookshot-workbench/docs/oot/fnmap.py", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["skills/ls-function-map/SKILL.md", "/home/mooki/Code/hookshot-wt/longshot-base-d3bd2805/work/build/sa/gen", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["skills/ls-function-map/SKILL.md", "LS_REPO=/home/mooki/Code/Hookshot", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["skills/ls-function-map/SKILL.md", "M=/home/mooki/Code/hookshot-workbench/docs/oot", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-issue-triage/SKILL.md", "/home/mooki/Code/hookshot-wt/reports/OURS.md", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-issue-triage/SKILL.md", "/home/mooki/Code/hookshot-wt/reports/drafts/", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-issue-triage/SKILL.md", "/home/mooki/Games/.hookshot-harness/hs-pr-ci.sh", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
@@ -451,6 +460,9 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["skills/ls-scripted-play/SKILL.md", "longshot_log.txt", 1, "Exact external game executable, log, profile, settings, environment, client-source or telemetry spelling required by the existing runtime."]
 ["skills/ls-scripted-play/SKILL.md", "scripts/hookshot_ctl.py", 1, "Exact external game executable, log, profile, settings, environment, client-source or telemetry spelling required by the existing runtime."]
 ["skills/ls-scripted-play/SKILL.md", "scripts/longshot_ctl.py", 1, "Exact external game executable, log, profile, settings, environment, client-source or telemetry spelling required by the existing runtime."]
+["skills/ls-skill-upkeep/SKILL.md", "/home/mooki/Code/hookshot-wt/reports/SKILL-NOTES.md", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
+["skills/ls-skill-upkeep/SKILL.md", "hookshot-", 1, "Still-installed physical skill folder or documented live-prefix map; only published logical skill IDs have changed."]
+["skills/ls-skill-upkeep/check_skills.py", "~/Code/Hookshot", 2, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-workbench/SKILL.md", "$HOME/.agents/skills/hookshot-pr-evidence/scripts/panels.sh", 1, "Still-installed physical skill folder or documented live-prefix map; only published logical skill IDs have changed."]
 ["skills/ls-workbench/SKILL.md", "$HOME/Code/Hookshot", 2, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
 ["skills/ls-workbench/SKILL.md", "$HOME/Code/hookshot-wt", 1, "Existing workstation clone, worktree, harness, copy or protected player/configuration path; retained until an explicitly scoped host migration."]
@@ -487,6 +499,8 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["tests/test_names.py", "hookshot-missing", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_names.py", "hookshot_log.txt", 6, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_names.py", "longshot-new.py", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
+["tests/test_publication.py", "/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh.", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
+["tests/test_publication.py", "/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh.\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "/home/mooki/Code/Hookshot", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "/home/mooki/Code/Hookshot\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "/home/mooki/Code/hookshot-wt\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
@@ -501,6 +515,7 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["tests/test_publication.py", "WCLASS=ls-harness\\nH=Games/.hookshot-harness\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "\\nHOOKSHOT_WB_PROFILE", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "hookshot", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
+["tests/test_publication.py", "hookshot-pr-evidence", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "hookshot-wb\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "hookshot-workbench-extra", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "hookshot.exe", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
@@ -513,6 +528,7 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["tests/test_publication.py", "other/hookshot-workbench-file\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "scripts/hookshot_ctl.py", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "scripts/longshot_ctl.py\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
+["tests/test_publication.py", "skill://hookshot-workbench", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "space/Code/Hookshot\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "value/Games/.hookshot-harness\\n", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publication.py", "workbench\\nHookshot", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]

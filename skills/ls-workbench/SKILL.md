@@ -15,9 +15,10 @@ select the owned checkout/copy's runtime names; missing or mixed identities refu
 queue routes below remain GitHub-only. Do not substitute forge names or migrate credentials; use reviewed public
 Forgejo GET readers. Proposed forge login/read helpers can change credentials and are not an approved workaround.
 
-Published skills use `skills/ls-<suffix>/`, frontmatter `name: ls-<suffix>` and `skill://ls-<suffix>` logical
-references. Publication maps the existing live `~/.agents/skills/hookshot-<suffix>/` folders to those names.
-The live folders have **not** been renamed: all explicit `.agents/skills/hookshot-*` command paths below still
+Published skills use `skills/ls-<suffix>/`, frontmatter `name: ls-<suffix>` and logical references such as
+`skill://ls-workbench`. Publication maps ten existing live `~/.agents/skills/hookshot-<suffix>/` folders to those
+names; `ls-function-map` and `ls-skill-upkeep` keep their existing live names. The live folders have **not** been
+renamed: all explicit `.agents/skills/hookshot-*` command paths below still
 target them. The workbench MCP identity is `ls-workbench`, its CLI is `ls-wb`, and its configuration is `LS_WB_*`;
 the Discord helper's override is `LS_DISCORD_CONFIG`. No external game switch changes.
 This source rename does not run publication, sync, relocation, installation or host cutover; the main session
@@ -71,6 +72,10 @@ source "$H/hs-names.sh"
 - Only an explicitly authorized timing hold uses `--exclusive`; only a named short run uses `--priority`.
   `--whole` reserves both GPU slots, not CPU quiet. Read `ls-perf-compare` before any speed claim.
 - Workers never push or post. Use the brief's author and trailers. Leave SDK licence acceptance to the user.
+- Before reading lifted code or changing `nx2/oot_*.py`, look the `f_<address>` (or the subject) up in the function
+  map: `skill://ls-function-map`. What you work out goes back as a row in your report.
+- End every final report with **Skill notes**: what in a skill was wrong, missing or misleading, and what no skill
+  covers (`skill://ls-skill-upkeep`). Workers report; only the main session edits skills.
 
 ```sh
 unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKTOP HSGATE_IN_GATE HSGATE_IN_INTEL_GATE
@@ -222,6 +227,11 @@ prints `kernel=unknown nvrm=unknown journal=unknown`, never zero. Check `DEVICE?
 `HOME-WRITES` and the intended end. `HOME-WRITES` tests path existence, not whether this run created it; investigate
 without changing the user's files. Older runs may lack the journal receipt; a later successful read cannot prove its
 original command succeeded.
+
+A `vcores: X ran without a core after 2000 ms: core N: Y` line names the thread that gave up waiting and the thread
+that owned the core **at that instant**; it does not say Y held the core for two seconds. Guest thread names are not
+unique (a pool's workers share one), so neither name identifies one worker. What those threads are in the game:
+`skill://ls-function-map`.
 
 Observe the queue without modifying tickets: the GPU state is `/tmp/hs-gpu-slots/` (`queue/`, `yielded/`,
 `holder.0`, `holder.1`, `last-kind`, `long-holds.log`, `closed`). File contents alone do not prove process liveness.

@@ -100,6 +100,7 @@ The other method slots GameActor overrides, from the engine's: 0, 1, 7–9, 11, 
 | `f_808e90a0` | `SeqExecuteWaitCreateActor_Update` | SeqExecuteWaitCreateActor (parameter IsWaitBaseProcRequestEmpty): waits on `f_83acff00` | read |
 | `f_805cf0e0` | `Placement_ReadCreateParams` | Reads a placed actor's creation fields: Presence (FlagName, IsNegation, IsCheckLazy), ExtraCreateRadius, IsForceActive, IsShortCreateRadiusInHeavy, MoveRadius, IsPhysicsStable, IsInWater, ExternalParameter, … and the AreaCulling block (`f_805cefb0`) | read |
 | `f_805cefb0` | `Placement_ReadAreaCulling` | The AreaCulling block: AreaCullingActivationArea, AreaCullingTargetArea | read |
+| `f_80ed6f00` | `PreActorModelWorkers_Init` | Creates the PreActor model-composition workers: threads all named `PreActorModelCompose`, priority 26, each pinned to one of the selected cores 0 to 5. What a PreActor is exactly (a light stand-in for a far or sleeping actor) is a guess | read |
 
 ### Resident actors
 

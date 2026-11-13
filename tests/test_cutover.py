@@ -26,6 +26,7 @@ class CutoverTests(unittest.TestCase):
             else:
                 old.mkdir(parents=True, exist_ok=True)
         for live in publish.SKILL_MAP:
+            (home / '.agents/skills' / live).mkdir(parents=True, exist_ok=True)
             (home / '.agents/skills' / live / 'SKILL.md').write_text('---\nname: ' + live + '\n---\nRead skill://' + live + '\n')
         harness = home / cutover.HOST_NAMES[0][0]
         (harness / 'hs-run.sh').write_text('H=' + str(harness) + '\nGAME=longshot\nWCLASS=hookshot-harness\n')
@@ -62,6 +63,7 @@ class CutoverTests(unittest.TestCase):
             moves, rewrites, problems = cutover.plan(home)
             self.assertFalse(problems)
             self.assertEqual(len(moves), 16)
+            self.assertTrue(all(old != new for old, new in moves))
             self.assertEqual(output.getvalue().count('\nRENAME '), len(moves))
             self.assertEqual(output.getvalue().count('\nREWRITE '), len(rewrites))
             self.assertIn(f'GIT git -C {home / cutover.HOST_NAMES[1][1]} worktree repair', output.getvalue())
@@ -112,6 +114,8 @@ class CutoverTests(unittest.TestCase):
             self.assertFalse(old_checkout.exists())
             self.assertTrue((home / 'Games/.ls-harness/ls-port.py').is_file())
             self.assertIn('name: ls-workbench', (home / '.agents/skills/ls-workbench/SKILL.md').read_text())
+            for name in ('ls-function-map', 'ls-skill-upkeep'):
+                self.assertTrue((home / '.agents/skills' / name / 'SKILL.md').is_file())
             self.assertIn('WCLASS=ls-harness', (home / 'Games/.ls-harness/hs-run.sh').read_text())
             self.assertIn('GAME=longshot', (home / 'Games/.ls-harness/hs-run.sh').read_text())
             self.assertIn('Games/.ls-harness', (checkout / 'source.py').read_text())

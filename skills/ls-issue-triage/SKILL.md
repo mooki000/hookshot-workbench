@@ -35,6 +35,8 @@ list. The **testing wanted** label permits non-collaborator PRs in the opt-in qu
 “nobody claims it on GitHub” does not mean unclaimed. This machine adds **Linux with an RTX 4090
 on NVIDIA's driver** (Tier 1 for the project) and **an Intel UHD 770 on Mesa** (no mesh shaders: the compute fallback).
 Read `skill://ls-workbench` for building and running, `skill://ls-pr-evidence` before anything is posted.
+When a report comes down to what the game itself does (a timer, a counter, a system that misbehaves above 60 fps),
+look the subject up in the function map first: `skill://ls-function-map`.
 
 ## The survey and how to refresh it
 

@@ -25,6 +25,8 @@ SKILL_MAP = {
     'hookshot-nightly-playtest': 'ls-nightly-playtest',
     'hookshot-pr-loop': 'ls-pr-loop',
     'hookshot-perf-monitor': 'ls-perf-monitor',
+    'ls-function-map': 'ls-function-map',
+    'ls-skill-upkeep': 'ls-skill-upkeep',
 }
 LIVE_LAYOUT = 'legacy'  # cutover.py changes only the installed source layout
 HARNESS_MAP = {name: Path(name).name for name in (
@@ -235,7 +237,7 @@ def publish(root, check=False):
     obsolete = []
     for live, public in SKILL_MAP.items():
         legacy = safe_target(root, Path('skills') / live)
-        if legacy.exists():
+        if live != public and legacy.exists():
             obsolete.append(legacy)
         current = safe_target(root, Path('skills') / public)
         for path in current.rglob('*') if current.exists() else ():

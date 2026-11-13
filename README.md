@@ -25,6 +25,8 @@ the scripts were written by them under those rules, then run and checked here. T
 | `skills/ls-regression-hunt` | Finding which merged pull request made a build worse: show the difference first with the same measuring code in both builds, test named suspects by revert, then bisect | `SKILL.md` |
 | `skills/ls-nightly-playtest` | Building the project's nightly tag from source each night, running its checks, and comparing the result with the nights before; what a first night can and cannot say | `SKILL.md` |
 | `skills/ls-pr-loop` | The existing GitHub-backed request queue, ownership, replies and verified evidence carry | `SKILL.md` |
+| `skills/ls-function-map` | Look a game function, structure or subsystem up in `docs/oot/` before reading lifted code; how far to trust a row; how to hand back a row for what was worked out | `SKILL.md` |
+| `skills/ls-skill-upkeep` | Keeping the skills true: how an agent reports a skill that was wrong, missing or misleading, the mechanical check, when a new skill is worth it, testing a change with a blank worker | `SKILL.md`, `check_skills.py` |
 | `harness/` | Run/check helpers, shared runtime-name selection and local commit porting | `hs-run.sh`, `hs_names.py`, `ls-port.py` |
 | `gates/` | Queues that let many test runs share one GPU and one CPU without hurting each other or the desktop | `hs-gpu-slot` |
 | `play/` | Step drivers that play on a running game: one for the control bridge's state samples, one for older builds with the state file; the driver is chosen explicitly | `hsap.py`, `hsap_file.py` |
@@ -157,10 +159,11 @@ Claude Code's `~/.claude/skills/`) pick them up as they are; a person can read t
 
 The published workbench identity is `ls-workbench` (LS in prose); its MCP CLI is `ls-wb` and its configuration
 variables use `LS_WB_*`. The Discord helper's override is `LS_DISCORD_CONFIG`; the fixture compiler override is
-`LS_MINGW`. These are workbench names, not game switches. The ten published skills above use `ls-<suffix>` in their directory, frontmatter `name` and logical
-`skill://ls-<suffix>` references.
+`LS_MINGW`. These are workbench names, not game switches. The twelve published skills above use `ls-<suffix>` in
+their directory and frontmatter `name`, with logical references such as `skill://ls-workbench`.
 
-Publication maps the existing live `~/.agents/skills/hookshot-<suffix>/` folders to `skills/ls-<suffix>/`.
+Publication maps ten existing live `~/.agents/skills/hookshot-<suffix>/` folders to `skills/ls-<suffix>/`;
+`ls-function-map` and `ls-skill-upkeep` are identity entries: their live and published names are already the same.
 The live folders have **not** been renamed: absolute and home-relative `.agents/skills/hookshot-*` command paths
 remain intentional until a separately authorized host cutover. This repository change does not run publication,
 sync, relocation or cutover, install the renamed MCP entry point, or change live configuration.
@@ -176,8 +179,9 @@ remains `hs_names.py`.
 
 `sync-from-live.sh` uses the explicit source/destination tables and tested `skill_references()` function in
 `publish.py`. It reads the current installed folders, preserves runtime names and physical live skill paths,
-and rewrites logical skill names on the way into `skills/ls-*`. Source comments/docstrings use LS/HS while runtime
-string values remain literal. The local compiler-input helper and its renamed test reuse their reviewed LS
+and rewrites logical skill names on the way into `skills/ls-*`. Identity entries are copied and checked like the
+other skills, but never removed as legacy folders or scheduled for a same-path host rename.
+Source comments/docstrings use LS/HS while runtime string values remain literal. The local compiler-input helper and its renamed test reuse their reviewed LS
 definitions so publication and host cutover select the same new override. Only allowlisted tools and source/document
 skill extensions are copied; unreviewed file types and links refuse. It never touches MCP files, live sources,
 saves or game data. `--check` compares without writing. `LS_WB_SOURCE_ROOT` selects an isolated source tree

@@ -176,6 +176,18 @@ lens flares (`OfxNumLensFlare` and its rigs, presets and dynamic presets). The a
 | `f_83357770` | `EnvSoundOcclusion_Params` | Declares `SkyOcclusionNear/Far/SHeavySnow` `VolumeMin`/`FilterMax`, the same for `InDoor`, `InDoorDist` and `Height`: how far a sound's volume and filter drop under a roof, indoors and in heavy snow | read |
 | `f_81097c50` | `WindSound_Params` | The wind sound's fields, among them `InCaveOcclusionVolumeBasic`/`Strong` and `InCaveOcclusionFilterBasic`/`Strong`, `BasicWindCaveRateMin` and `BasicWindSkyRateMin` | read |
 
+## The bake workers
+
+Two worker threads of the baked-lighting side (probes and baked resources). Looked at for the port's virtual-core
+waits while a save loads, where both show up as waiters.
+
+| Function | Name | What it does | Sure |
+|---|---|---|---|
+| `f_80b15710` | `BakeProbe_Init` | Creates the `BakeProbe` worker with its configured priority and a one-core mask, bound to `f_80866480` | read |
+| `f_80866480` | `BakeProbe_RunEntries` | The `BakeProbe` worker's body: calls each registered entry while holding the manager's mutex | read |
+| `f_80b15d80` | `BakeModuleMgr_Init` | Creates the `bake::ModuleMgr` worker when configured, bound to `f_80b41070`; its setup registers the baked-resource and light handlers | read |
+| `f_80b41070` | `BakeModuleMgr_DrainQueue` | The `bake::ModuleMgr` worker's body: pops queued work under a mutex, runs each item with the mutex released, and yields between items | read |
+
 ## Data
 
 | Address | Name | What it is | Sure |
