@@ -158,7 +158,10 @@ A claim is dropped out loud when the work stops.
 ## Before any push (all must pass)
 
 1. **Nothing made from the game** in the branch: no dump, no `work/`, no built game, saves, lifted C, shader dumps,
-   logic or lists read out of the game's files. `git status` clean of build output; no `.gitignore` bypass.
+   logic or lists read out of the game's files. `git status` clean of build output; no `.gitignore` bypass. A change
+   that names a game function (`f_<address>` in `nx2/oot_*.py` or `host/`) comes with a function-map row in your
+   report (`skill://ls-function-map`, section 4); the map's pages and rows themselves never go into a pull request,
+   an issue or a comment: write what the change needs in your own words.
 2. **Licence**: only code that can be GPL-3.0-or-later. Nothing from the other port's repository (its additions are "all
    rights reserved"); the user's own earlier files only as `/home/mooki/Code/hookshot-wt/reports/OURS.md` allows.
    Third-party code keeps its notice.

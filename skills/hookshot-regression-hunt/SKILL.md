@@ -16,7 +16,9 @@ remain GitHub-only; a renamed binary is neither a Forgejo backend nor a timing g
 **Use for:** “which change caused this?”, a named suspect, a proposed fix or a confirmed nightly regression.
 Read `hookshot-workbench`, `hookshot-perf-compare` and the current agent brief. Read `hookshot-pr-evidence` before
 preparing tracker text. All game runs are windowless; a swapchain-only question remains untested. No safety mechanism
-is disabled without explicit authorization. Workers never push or post.
+is disabled without explicit authorization. Workers never push or post. When a suspect, a revert or a fix comes down
+to a game function (`f_<address>`, a `patch_*` in `nx2/oot_*.py`), read `skill://ls-function-map` before the lifted
+code: the map may already say what the function does and which patch hooks it.
 
 ```sh
 H="$HOME/Games/.hookshot-harness"

@@ -63,6 +63,10 @@ source "$H/hs-names.sh"
 - Only an explicitly authorized timing hold uses `--exclusive`; only a named short run uses `--priority`.
   `--whole` reserves both GPU slots, not CPU quiet. Read `hookshot-perf-compare` before any speed claim.
 - Workers never push or post. Use the brief's author and trailers. Leave SDK licence acceptance to the user.
+- Before reading lifted code or changing `nx2/oot_*.py`, look the `f_<address>` (or the subject) up in the function
+  map: `skill://ls-function-map`. What you work out goes back as a row in your report.
+- End every final report with **Skill notes**: what in a skill was wrong, missing or misleading, and what no skill
+  covers (`skill://ls-skill-upkeep`). Workers report; only the main session edits skills.
 
 ```sh
 unset HSGATE_SLOT_DIR HSGATE_INTEL_SLOT_DIR HSGATE_SLOT_TEST HSGATE_SLOT_NODESKTOP HSGATE_IN_GATE HSGATE_IN_INTEL_GATE
@@ -214,6 +218,11 @@ prints `kernel=unknown nvrm=unknown journal=unknown`, never zero. Check `DEVICE?
 `HOME-WRITES` and the intended end. `HOME-WRITES` tests path existence, not whether this run created it; investigate
 without changing the user's files. Older runs may lack the journal receipt; a later successful read cannot prove its
 original command succeeded.
+
+A `vcores: X ran without a core after 2000 ms: core N: Y` line names the thread that gave up waiting and the thread
+that owned the core **at that instant**; it does not say Y held the core for two seconds. Guest thread names are not
+unique (a pool's workers share one), so neither name identifies one worker. What those threads are in the game:
+`skill://ls-function-map`.
 
 Observe the queue without modifying tickets: the GPU state is `/tmp/hs-gpu-slots/` (`queue/`, `yielded/`,
 `holder.0`, `holder.1`, `last-kind`, `long-holds.log`, `closed`). File contents alone do not prove process liveness.

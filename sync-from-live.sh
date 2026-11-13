@@ -12,7 +12,8 @@ H=/home/mooki/Games/.hookshot-harness
 S=/home/mooki/.agents/skills
 
 for s in hookshot-workbench hookshot-pr-evidence hookshot-perf-compare hookshot-scripted-play hookshot-issue-triage \
-         hookshot-discord-updates hookshot-regression-hunt hookshot-nightly-playtest hookshot-pr-loop hookshot-perf-monitor; do
+         hookshot-discord-updates hookshot-regression-hunt hookshot-nightly-playtest hookshot-pr-loop hookshot-perf-monitor \
+         ls-function-map ls-skill-upkeep; do
     rm -rf "$here/skills/$s"
     cp -r "$S/$s" "$here/skills/$s"
 done

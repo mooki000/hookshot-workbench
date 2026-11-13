@@ -25,6 +25,8 @@ the scripts were written by them under those rules, then run and checked here. T
 | `skills/hookshot-regression-hunt` | Finding which merged pull request made a build worse: show the difference first with the same measuring code in both builds, test named suspects by revert, then bisect | `SKILL.md` |
 | `skills/hookshot-nightly-playtest` | Building the project's nightly tag from source each night, running its checks, and comparing the result with the nights before; what a first night can and cannot say | `SKILL.md` |
 | `skills/hookshot-pr-loop` | The existing GitHub-backed request queue, ownership, replies and verified evidence carry | `SKILL.md` |
+| `skills/ls-function-map` | Look a game function, structure or subsystem up in `docs/oot/` before reading lifted code; how far to trust a row; how to hand back a row for what was worked out | `SKILL.md` |
+| `skills/ls-skill-upkeep` | Keeping the skills true: how an agent reports a skill that was wrong, missing or misleading, the mechanical check, when a new skill is worth it, testing a change with a blank worker | `SKILL.md`, `check_skills.py` |
 | `harness/` | Run/check helpers, shared runtime-name selection and local commit porting | `hs-run.sh`, `hs_names.py`, `longshot-port.py` |
 | `gates/` | Queues that let many test runs share one GPU and one CPU without hurting each other or the desktop | `hs-gpu-slot` |
 | `play/` | Step drivers that play on a running game: one for the control bridge's state samples, one for older builds with the state file; the driver is chosen explicitly | `hsap.py`, `hsap_file.py` |

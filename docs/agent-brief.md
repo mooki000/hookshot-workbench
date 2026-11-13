@@ -16,9 +16,14 @@ the matching skills below. Use their existing tools rather than inventing anothe
 | Nightly/rolling main testing | `hookshot-nightly-playtest` | existing `nightly/hs-nightly.py` watch; never create a second one |
 | Team updates / Discord reads or named messages | `hookshot-discord-updates` | project's `scripts/team_chat.py` in `main-tools`; Main alone posts |
 | Testing other people's PRs / request queue | `hookshot-pr-loop` | priority list; `scripts/test_requests.py` in `main-tools`; Main alone claims/renews/completes |
+| Lifted game code, an `f_<address>` function, a game structure or subsystem | `ls-function-map` | `docs/oot/fnmap.py find` in the workbench checkout, before reading lifted C; what you work out goes back as a row in your report |
+| A skill was wrong, stale, misleading, or no skill covers a repeated procedure | `ls-skill-upkeep` | **Skill notes** in your report; the main session alone edits skills (`check_skills.py`) |
 
-Every report has a **Skills and tools** section: names read, tools actually used, and exact file/line corrections
-for missing or stale guidance. A missing skill declaration means usage is unrecorded, not proof it was ignored.
+Every report has a **Skills and tools** section: names read (and when: before starting, or only after getting stuck)
+and tools actually used. Every report ends with **Skill notes**: one line for each thing in a skill that was wrong,
+missing or misleading (quote the line), and for each procedure you had to invent that no skill covers; or `Skill
+notes: none`. The main session records every note in `reports/SKILL-NOTES.md` and fixes the skill, so the next agent
+does not meet the same fault. A missing skill declaration means usage is unrecorded, not proof it was ignored.
 Read `MORNING.md`, the last 150 lines of `LOG.md`, and `POSTED.md` before describing thread work. A result is a
 **finding** only after the whole thread it belongs to has been read and compared with what is already known.
 
@@ -45,6 +50,14 @@ Their rules bind you as they bind everyone. The ones that matter most:
    request**: not the dump, not `work/`, not built games, saves, lifted C, shader dumps. Pictures of the game, videos and
    `hookshot_log.txt` are fine. Game-derived data we make (flag names, coordinates, routes, world models, logic read from
    the game's files) stays local under the harness or the reports' files folders; if in doubt, it is game data.
+   **A map of the game's lifted functions exists** (about 1,400 rows: what each `f_<address>` we have looked at does,
+   its data and structures, and how sure each row is), by dyst, in the workbench repository:
+   `/home/mooki/Code/hookshot-workbench/docs/oot/` (published at https://github.com/mooki000/ls-workbench). Before
+   reading lifted code, look the address up: `python3 /home/mooki/Code/hookshot-workbench/docs/oot/fnmap.py find
+   f_803edf70` (or words). When you work out what a function does, write the row for it (conventions:
+   `docs/oot/README.md`, "What may go here": an address, a name of ours, a description in our own words, never lifted
+   code or anything copied from the game's files) and hand the row to the main session in your report; do not commit
+   or push in the workbench repository yourself.
 2. **Licence: only code we may license under GPL-3.0-or-later.** The other port's repository puts everything added after its
    base import under "all rights reserved": **never copy a line from the other port's repository into Hookshot**, and never
    paste decompiled game code. The user's own earlier work (files he added in his fork that contain nothing of
