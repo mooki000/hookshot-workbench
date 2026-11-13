@@ -3,7 +3,7 @@
 How the game keeps its flags and values ("game data"), how code reads them, and what the save files hold. Looked at while
 looking for a way to try Master Quest (November 2026), and for the debug tools' flag reads and writes.
 
-**Longshot code:** [host/hos_main.c](../../host/hos_main.c) (`oot_gamedata_bool`, `oot_gamedata_set_bool`)
+**LS code:** `host/hos_main.c` (`oot_gamedata_bool`, `oot_gamedata_set_bool`)
 **See also:** [save-data.md](save-data.md), [master-quest.md](master-quest.md)
 
 ## How the game declares its values
@@ -86,7 +86,7 @@ dictionary in `Pack/ZsDic.pack.zs`. **tested**
 ## The save files
 
 Each profile folder holds `account.sav`, `option.sav` and `slot_00 … slot_NN` with `progress.sav` and `caption.sav` in each
-(see [../saves.md](../saves.md)). The files are flat lists of values keyed by hash, in the same family as Tears of the
+(see `docs/saves.md`). The files are flat lists of values keyed by hash, in the same family as Tears of the
 Kingdom's saves:
 
 - A header: `04 03 02 01`, then a version word (`0x002d80eb`) and the file's size.

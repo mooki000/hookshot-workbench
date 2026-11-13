@@ -4,8 +4,8 @@ How the game sizes its picture and its 3D: the dynamic resolution path and the f
 and where it is read, and the memory the render targets come from. Also the viewport helper the save picture is drawn
 through. Looked at for the Insert menu's Resolution and Output resolution rows, native scene resolution and widescreen.
 
-**Longshot code:** [nx2/oot_patches.py](../../nx2/oot_patches.py) (`patch_dynres`, `fixed_scale`, `apply_output_size`),
-[nx2/oot_wide.py](../../nx2/oot_wide.py), [host/nn_applet.c](../../host/nn_applet.c) (`hos_output_size`, `hos_rt_pool_size`)
+**LS code:** `nx2/oot_patches.py` (`patch_dynres`, `fixed_scale`, `apply_output_size`),
+`nx2/oot_wide.py`, `host/nn_applet.c` (`hos_output_size`, `hos_rt_pool_size`)
 **See also:** [frame-time.md](frame-time.md)
 
 ## The 3D's scale
@@ -16,9 +16,9 @@ new set of render targets at each size, about 11 images a frame at times), the o
 
 | Function | Name | What it does | Sure |
 |---|---|---|---|
-| `f_831f3200` | `Scene_Update` | The scene's update. Recomputes the 3D's scale (`+0xe5c = scale * +0xe58 / +0xe50`) only while `+0xe2c` bit 3 is set; the dynamic path sets it on a level change. On the fixed path the flags `+0xe20` bits 3 and 4 put a hardcoded 0.75 or 0.5 in place of the scale. Its copy of the picture's size is at `+0xb68`. Hooked by `fixed_scale`: a cached scale that differs from the one asked for sets the dirty bit (Hookshot's `patch_scene` did it too, until #2042) | tested |
+| `f_831f3200` | `Scene_Update` | The scene's update. Recomputes the 3D's scale (`+0xe5c = scale * +0xe58 / +0xe50`) only while `+0xe2c` bit 3 is set; the dynamic path sets it on a level change. On the fixed path the flags `+0xe20` bits 3 and 4 put a hardcoded 0.75 or 0.5 in place of the scale. Its copy of the picture's size is at `+0xb68`. Hooked by `fixed_scale`: a cached scale that differs from the one asked for sets the dirty bit (HS's `patch_scene` did it too, until #2042) | tested |
 | `f_831f41d0` | `Scene_RequestRefresh` | Called for the fixed path's flag 1. Its bit 3 is cleared by the apply block in the same frame, before any recompute, so the fixed path kept the dynamic path's last scale (0.75 docked: 1536×864) until the fix | tested |
-| `f_806702e0` | `GraphicsScale_SelectMode` | Picks the graphics scale's mode and tells the resources about a change. The scale table is (1.0, 0.8, 2/3) for each axis, in two profiles; the game runs in mode 1, so the fixed path's 100% sized the scene at 0.8 of the picture (2048×1152 in 2560×1440). Its factor times the base is the frame, capped by the scale's display class (docked 3840×2160 at scale 0). Hookshot's `patch_config` made mode 1's 0.8 1.0, until #2042 removed it | tested |
+| `f_806702e0` | `GraphicsScale_SelectMode` | Picks the graphics scale's mode and tells the resources about a change. The scale table is (1.0, 0.8, 2/3) for each axis, in two profiles; the game runs in mode 1, so the fixed path's 100% sized the scene at 0.8 of the picture (2048×1152 in 2560×1440). Its factor times the base is the frame, capped by the scale's display class (docked 3840×2160 at scale 0). HS's `patch_config` made mode 1's 0.8 1.0, until #2042 removed it | tested |
 
 ## The output size
 

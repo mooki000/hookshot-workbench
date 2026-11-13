@@ -6,7 +6,7 @@ navigation), the preloading of the next map, and the per-map tables that index t
 spawning. Looked at in November 2026, to learn whether Master Quest
 loads other geometry ([master-quest.md](master-quest.md)).
 
-**Longshot code:** none yet
+**LS code:** none yet
 **See also:** [master-quest.md](master-quest.md) (the `_MQ` maps), [events.md](events.md) (`f_829df380`, the change of
 map), [game-data.md](game-data.md)
 

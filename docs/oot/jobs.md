@@ -5,8 +5,8 @@ jobs become ready and how idle threads wait, how the main thread runs the frame 
 running on the frame's critical path. Looked at in November 2026, after the frame rate turned out to be bound by this
 phase rather than by the replay.
 
-**Longshot code:** [host/hos_thread.c](../../host/hos_thread.c) (the virtual cores, sleeps), [host/nn_os_sync.c](../../host/nn_os_sync.c)
-(LightEvent), [scripts/crit.py](../../scripts/crit.py) (the critical path from an all-thread sample)
+**LS code:** `host/hos_thread.c` (the virtual cores, sleeps), `host/nn_os_sync.c`
+(LightEvent), `scripts/crit.py` (the critical path from an all-thread sample)
 **See also:** [frame-time.md](frame-time.md) (the frame step and limiter), [maps.md](maps.md) (the BancModule thread, the
 PlacementMgr), [graphics.md](graphics.md) (the boot, `f_83b7a2c0`)
 
@@ -252,10 +252,10 @@ an SRWLOCK and a CONDITION_VARIABLE (`nn_os_sync.c`): a waiter spins a while (`s
 its virtual core. So every edge of the graph whose job lands on a sleeping thread costs a wake-up and, if the core is
 held, a wait for it. **read**
 
-### Pinning and Longshot's virtual cores
+### Pinning and LS's virtual cores
 
 Every worker is pinned to one core, so `BaseProcExecutorN`, `ModuleSystemWorkerN` and a navigation-mesh worker on core N
-share it. Longshot gives a guest thread one of six virtual cores while it runs guest code, as Horizon runs one thread
+share it. LS gives a guest thread one of six virtual cores while it runs guest code, as Horizon runs one thread
 per core (`HOS_VCORES`, on by default: the game keys per-core data by core number). The game's pools stay at five or six
 threads whatever the host has: the `0x3e` mask is in the game's code. **read**
 

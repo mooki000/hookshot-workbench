@@ -4,8 +4,8 @@ The game's UI is built from layouts: trees of panes (text, pictures, parts, capt
 move them. These are the functions for finding a pane, setting its text and playing its animations, as the save list, the
 menu mouse and the text speed and size options use them.
 
-**Longshot code:** [host/oot_menu.c](../../host/oot_menu.c) (panes by name and their positions),
-[nx2/oot_patches.py](../../nx2/oot_patches.py) (text speed and size), [host/nn_vi.c](../../host/nn_vi.c) (`hos_text_scale`)
+**LS code:** `host/oot_menu.c` (panes by name and their positions),
+`nx2/oot_patches.py` (text speed and size), `host/nn_vi.c` (`hos_text_scale`)
 **See also:** [save-list.md](save-list.md), [menus.md](menus.md)
 
 ## Panes and text

@@ -7,9 +7,9 @@ thread reads the next chunk. Looked at in November 2026 by static analysis of th
 to give the zstd decoder tree that `scripts/hotlist.py` lists its rows, and to say how loading is threaded and how the
 rest of the game waits on it.
 
-**Longshot code:** [host/nn_fs.c](../../host/nn_fs.c) (the `nn::fs` mounts and reads), [host/mods.c](../../host/mods.c)
-(RomFS files replaced by mods), [host/prompts.c](../../host/prompts.c) (`.zs` files written as raw zstd frames),
-[host/hos_main.c](../../host/hos_main.c) (`--romfs`), [scripts/hotlist.py](../../scripts/hotlist.py) (the decoder tree
+**LS code:** `host/nn_fs.c` (the `nn::fs` mounts and reads), `host/mods.c`
+(RomFS files replaced by mods), `host/prompts.c` (`.zs` files written as raw zstd frames),
+`host/hos_main.c` (`--romfs`), `scripts/hotlist.py` (the decoder tree
 built at the hot flags). On `main`, `host/hos_zstd.c` (#2738, `HOS_NATIVE_ZSTD`) replaces the stream decode with libzstd.
 **See also:** [maps.md](maps.md) (how a map's files are named and asked for), [textures.md](textures.md) (`.bntx` and the
 terrain's resources), [jobs.md](jobs.md) (sead threads, the job record), [game-data.md](game-data.md) (a `.byml.zs` read
@@ -41,7 +41,7 @@ with the dictionary pack), [master-quest.md](master-quest.md) (the mounts the ga
    **read**
 6. **The decoder is the game's own copy of zstd**, an older one (about 1.3.6 to 1.4.4, from what it contains: the
    `execSequenceLast7` end copy, the cold-dictionary prefetch, 8 bytes of over-copy room). It is lifted like the rest of
-   the game: in Longshot it is plain translated code, and a profile seldom samples it because it runs while areas load
+   the game: in LS it is plain translated code, and a profile seldom samples it because it runs while areas load
    (hence its explicit place in `scripts/hotlist.py`). **read** (the version range is a **guess**)
 
 ## Functions
@@ -293,13 +293,13 @@ A resource handle has two light events in its record; `ResourceHandle_WaitReady`
 that is one of the system's own threads (by its thread context) takes `f_80036920` instead of the second wait, so a
 loading thread that needs another resource does not block on itself. Many loaders wait like this (75 callers); the terrain has its own waits (`SeqExecuteWaitTerrainResourceStable`, [textures.md](textures.md)).
 
-### What Longshot does with it
+### What LS does with it
 
 - **The RomFS** is a folder: `MountRom` (both forms) mounts whatever name the game gives, `content` here, on the folder
   given by `--romfs` or the `romfs` folder beside the image, read-only; `QueryMountRomCacheSize` answers 0x10000 and the
   cache is not used. Reads are positional, so the loading threads can read one file at once (`host/nn_fs.c`). A mod's
   file replaces the game's at the same RomFS path (`host/mods.c`).
-- **`.zs` files Longshot writes** (the button prompts' textures, layouts and font, `host/prompts.c`) are zstd frames of
+- **`.zs` files LS writes** (the button prompts' textures, layouts and font, `host/prompts.c`) are zstd frames of
   raw 128 KB blocks with dictionary ID 0, so the game's decoder takes them without a dictionary
   (`ZsDecompressor_TryDecompFromDevice` looks a dictionary up only for a non-zero ID).
 - **The decoder** is lifted code. `scripts/hotlist.py` builds the tree at the hot flags whatever the profile says
@@ -324,7 +324,7 @@ loading thread that needs another resource does not block on itself. Many loader
   dictionaries `Pack/ZsDic.pack` holds besides `bcett.byml.zsdic` ([maps.md](maps.md)).
 - The game's zstd version: no version string was found; the range above comes from what the code contains. No long-offset
   (prefetching) sequence decoder was found in the stream's tree.
-- What a `.zs` file with an unregistered dictionary ID does in Longshot: in the game's code the lookup walks into a null
+- What a `.zs` file with an unregistered dictionary ID does in LS: in the game's code the lookup walks into a null
   node (`ZsDecompressor_FindDictionary`).
 - The `Unload(ForSync)` users (`f_801b52d0`, `f_801b5430`, `f_801b80a0`, `f_801b8730`, `f_801be6e0`) and `ResidentCommon`'s
   0x100000.

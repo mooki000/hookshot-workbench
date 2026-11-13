@@ -1,16 +1,16 @@
 # NVN calls: the game's boundary with the GPU
 
-Every NVN function the game calls, where it reaches it from, and what each call costs under Longshot. The game asks the
+Every NVN function the game calls, where it reaches it from, and what each call costs under LS. The game asks the
 NVN driver for 735 functions once at start-up, keeps a pointer to each in a table, and calls through that table from
-about 7,500 places; Longshot answers each call with a C handler in `host/nvn_native.c` that records a small command, and
+about 7,500 places; LS answers each call with a C handler in `host/nvn_native.c` that records a small command, and
 the Vulkan renderer replays the commands at the submit. The frame rate is CPU-bound, so what each call costs on the
-game's threads matters. Looked at in November 2026 by static analysis of the binary and of Longshot's code (no runs).
+game's threads matters. Looked at in November 2026 by static analysis of the binary and of LS's code (no runs).
 
-**Longshot code:** [host/nvn_native.c](../../host/nvn_native.c) (every handler), [gpu/render/rx_nvn.h](../../gpu/render/rx_nvn.h)
-(the command records and the command buffer object), [host/hos_hostcall.c](../../host/hos_hostcall.c) and
-[third_party/a64-kit/rt/a64_rt.c](../../third_party/a64-kit/rt/a64_rt.c) (how a lifted call reaches a handler),
-[host/rx_backend.c](../../host/rx_backend.c), [gpu/vk/vk_replay.cpp](../../gpu/vk/vk_replay.cpp) (the replay),
-[nx2/standalone.py](../../nx2/standalone.py) (`nvn_exports`: the SDK's NVN functions hooked)
+**LS code:** `host/nvn_native.c` (every handler), `gpu/render/rx_nvn.h`
+(the command records and the command buffer object), `host/hos_hostcall.c` and
+`third_party/a64-kit/rt/a64_rt.c` (how a lifted call reaches a handler),
+`host/rx_backend.c`, `gpu/vk/vk_replay.cpp` (the replay),
+`nx2/standalone.py` (`nvn_exports`: the SDK's NVN functions hooked)
 **See also:** [drawing.md](drawing.md) (the game's draw loops), [culling.md](culling.md) (the query and condition
 calls), [textures.md](textures.md) (textures and pools), [jobs.md](jobs.md) (the threads that record), [rendering.md](rendering.md)
 
@@ -24,10 +24,10 @@ calls), [textures.md](textures.md) (textures and pools), [jobs.md](jobs.md) (the
    `nvnCommandBufferBindStorageBuffer` (712), `nvnBufferGetAddress` (690) and `nvnCommandBufferBindUniformBuffer` (666).
    Of the 100 hottest functions in play, 13 call NVN; the hottest are buffer and pool helpers (ranks 8, 9 and 10) and the
    recording job `f_80084de0` (rank 16). **read**
-3. **The inline-command path is never taken under Longshot.** About 1,870 places first test `nvnPrivate0`
+3. **The inline-command path is never taken under LS.** About 1,870 places first test `nvnPrivate0`
    (`0x85ff20a8`, in the SDK's zero-initialised data, imported through `0x84ca2dd8`): when it is set they write GPU
    methods straight into the command buffer's memory instead of calling. On the console the SDK's own
-   `nvnDeviceGetProcAddress` (`f_855f6f80`) sets it when asked with a device. Longshot answers `nvnBootstrapLoader` and
+   `nvnDeviceGetProcAddress` (`f_855f6f80`) sets it when asked with a device. LS answers `nvnBootstrapLoader` and
    every NVN function the SDK exports itself, so that SDK code never runs, the flag stays 0, and every one of those places
    makes the call. Most are per-draw binds and queries: `BindUniformBuffer` ~499, `ResetCounter` ~296, `ReportCounter`
    ~285, `SetRenderEnable` ~246, `SetRenderEnableConditional` ~205. **read**
@@ -55,7 +55,7 @@ with no device (`f_812be290(0, getProcAddress)`), builds the device (`nvnDeviceB
 a small wrapper. 1,324 of the 7,510 places use the global's address directly instead of the GOT slot (the same pointer).
 The game imports nothing else of NVN from the SDK: its only NVN imports are `nvnBootstrapLoader` and `nvnPrivate0`. **read**
 
-**In Longshot.** `nvnBootstrapLoader` is answered by the host (`HLE(nvnBootstrapLoader)`, nvn_native.c:3208) and every
+**In LS.** `nvnBootstrapLoader` is answered by the host (`HLE(nvnBootstrapLoader)`, nvn_native.c:3208) and every
 NVN function the SDK defines is hooked to the host's (`nvn_exports`, nx2/standalone.py), so the console driver never
 runs. `nvnDeviceGetProcAddress` (nvn_native.c:186) gives each name a host call address once (`nvn_native_proc`,
 nvn_native.c:3149: a binary search under an exclusive lock, at load only); a name with no handler gets one that reaches
@@ -113,9 +113,9 @@ given a device and two of the driver's own globals agree (`[0x85ff20c0]` non-zer
 non-zero and equal to `0x85e2cda0`), else 0. The game's second table fill, with the device, is the call that sets it.
 `f_855f1750` clears it. **read** (what the two globals mean: guess)
 
-**Under Longshot** neither runs: `nvnBootstrapLoader` and every SDK NVN function are the host's, and the host's
+**Under LS** neither runs: `nvnBootstrapLoader` and every SDK NVN function are the host's, and the host's
 `nvnDeviceGetProcAddress` writes nothing there. The flag is in the SDK's zero-initialised data, so it reads 0, and every
-guarded place takes the call. **read** Even if it were set, the fit test would fail: Longshot's command buffer object
+guarded place takes the call. **read** Even if it were set, the fit test would fail: LS's command buffer object
 holds its magic (`CMDB`) and recording flag at `+0` and its slot number at `+8` (rx_nvn.h, `nvn_cmd`), so `+0` plus the
 size is always past `+8`. (rx_nvn.h's comment says the write pointer is at `+0x20`/`+0x28`, from another game; in this
 one it is at `+0`/`+8`.) **read**
@@ -139,10 +139,10 @@ next command-buffer call after it:
 | Others (state binds, stencil, mesh draws, barriers) | ~50 | | |
 | Not attributed | ~24 | | |
 
-So on the console about 1,800 places, nearly all of them per draw or per query, can skip the call; under Longshot each of
+So on the console about 1,800 places, nearly all of them per draw or per query, can skip the call; under LS each of
 them is a host call and a record. **read** (counts approximate: a few places test the flag once for several calls)
 
-## What a call costs in Longshot
+## What a call costs in LS
 
 **The common path.** A record goes through `rec()` (nvn_native.c:1682): `cmd_alloc` (1354) finds the command buffer's
 host buffer by the slot number in the object (`cmd_host`, 1280: a table lookup and an owner check, no lock), checks room
@@ -231,7 +231,7 @@ functions that draw. Four shapes:
   objects (blend, colour, channel mask, depth-stencil, polygon: each built with three to six setter calls, then bound),
   `SetBlendColor`, `SetPolygonOffsetClamp`, `SetDepthClamp`, the stencil values, then runs of uniform and storage buffer
   binds (64 and 60 places in `f_8008fc00` alone, unrolled by stage and slot), `BindTexturesDeferred` and `BindTexture`,
-  and `CallCommands` to run a recording made earlier. Under Longshot each is a host call, each bind a small record,
+  and `CallCommands` to run a recording made earlier. Under LS each is a host call, each bind a small record,
   and each `CallCommands` a copy of the recording it calls. **read**
 - **Indexed draws** (`f_80435bc0`, rank 149): for each draw a few uniform-buffer binds (each behind the inline flag), a
   storage-buffer bind, `nvnDeviceGetTextureHandle` and `BindTexture` per texture (61 places), `BufferGetAddress` for the
@@ -244,7 +244,7 @@ functions that draw. Four shapes:
 - **Mesh shading** (`f_80084de0`, rank 16, on [jobs.md](jobs.md) as `ModuleJob_Dispatch`): this function makes and
   records command buffers itself (`Initialize`, `AddControlMemory`, `AddCommandMemory`, `BeginRecording` … `EndRecording`,
   `Finalize`), sets the viewport and scissor, builds and binds every state object, and between them `ResetCounter`,
-  `ReportCounter`, `SetRenderEnable`, `SetGeometryProcessingMode`, `CallCommands` and `DrawMeshTasks`. Under Longshot it
+  `ReportCounter`, `SetRenderEnable`, `SetGeometryProcessingMode`, `CallCommands` and `DrawMeshTasks`. Under LS it
   is the one hot function that reaches the costly handlers (`Initialize`/`Finalize` and `EndRecording` take locks;
   `EndRecording` and `CallCommands` copy). **read**
 
@@ -258,7 +258,7 @@ is where most of the counter and condition places are. **read**
 |---|---|---|---|
 | `f_812be290` | `NvnProcs_Load(device, getProcAddress)` | 735 calls of `getProcAddress(device, name)`, each answer stored through its GOT slot into its global in `g_NvnProcs` (`0x84d66f00`…`0x84d685f0`). Called twice by `f_8348be50`, with no device and then with it | read |
 | `f_8348be50` | `GameFramework_InitNvn` | The framework's NVN set-up: `nvnBootstrapLoader` for `nvnDeviceInitialize` and `nvnDeviceGetProcAddress` (and `nvnInstallGlobalDebugCallback` when `+0xae` is 1), the table without a device, the device builder, a 0x3000-byte device, `nvnDeviceInitialize`, the table with the device, then `nvnDeviceGetInteger`: API 231 and minor at least 40 (`0x8348c11c`) or it stops there. Also uses "Presentation Thread". Called from `nnMain` (`f_81222ce0`, [graphics.md](graphics.md)) | read |
-| `f_855f6f80` | `NvnSdk_DeviceGetProcAddress(device, name)` | The SDK's `nvnDeviceGetProcAddress`: stores the inline-command flag `nvnPrivate0` (1 with a device and the driver's state as expected, else 0), then binary-searches 735 names after the "nvn" prefix. Never runs under Longshot | read |
+| `f_855f6f80` | `NvnSdk_DeviceGetProcAddress(device, name)` | The SDK's `nvnDeviceGetProcAddress`: stores the inline-command flag `nvnPrivate0` (1 with a device and the driver's state as expected, else 0), then binary-searches 735 names after the "nvn" prefix. Never runs under LS | read |
 | `f_855f1750` | `NvnSdk_ClearPrivate0` | Stores 0 into `nvnPrivate0` (the rest not read); three callers and a table word (`0x85e56dd8`). Likely the device's finalize | guess |
 | `f_812c3470` | `NvnConv_Primitive(x)` | A table lookup (`0x83e79c60`): the game's primitive enum to NVN's | read |
 | `f_812c3480` | `NvnConv_Stage(x)` | A table lookup (`0x83e79c9c`): the game's shader-stage enum to NVN's, for the bind wrappers: the game's stages 0–7 map to NVN's 0, 3, 4, 2, 1, 5, 8, 6 ([shaders.md](shaders.md)) | read |
@@ -280,7 +280,7 @@ is where most of the counter and condition places are. **read**
 | `f_83607f60` | `DrawCtx_DrawElementsIndirect(list, ctx, index, slot)` | `DrawElementsIndirect` (primitive 4) with the arguments in the list's entry; 256 callers in the same range, none ranked | read |
 | `f_8359f530` | `DrawCtx_DrawMeshTasks(obj, ctx, …)` | By `obj+0x69f`: 0, another path (`f_8029fef0`); 1, `DrawMeshTasks(0, n)`; 2, `DrawMeshTasks(0, (n + 31) / 32)`, with n at `obj+0x6a4`. 66 callers | read |
 | `f_800a8df0` | `GpuBuffer_Map(buf)` | `nvnBufferMap(buf+8)`. Hot rank 1623, 81 callers | read |
-| `f_800a9510` | `GpuBuffer_Flush(buf, offset, size)` | `nvnBufferFlushMappedRange(buf+8, …)` when `buf+1` bit 1 is set; a no-op handler in Longshot. Hot rank 2331, 62 callers | read |
+| `f_800a9510` | `GpuBuffer_Flush(buf, offset, size)` | `nvnBufferFlushMappedRange(buf+8, …)` when `buf+1` bit 1 is set; a no-op handler in LS. Hot rank 2331, 62 callers | read |
 | `f_80527e90` | `Queue_SubmitOne(queue, handles)` | `f_80527f00`, then `nvnQueueSubmitCommands(queue, 1, handles)`. Hot rank 452 | read |
 | `f_80527f00` | `Queue_SubmitPending` | `nvnQueueSubmitCommands` and `nvnQueueFlush`. Hot rank 427 | guess |
 | `f_805902c0` | `Queue_SubmitFenced` | `nvnQueueWaitSync`, `nvnQueueSubmitCommands`, `nvnQueueFenceSync`, `nvnQueueFlush`, `nvnEventGetValue`, in that order. Hot rank 261 | read |
@@ -299,7 +299,7 @@ is where most of the counter and condition places are. **read**
   `InvalidateMappedRange`, 6 each, for the actors' occlusion sphere queries; it uses the names `mLastTransform` and
   `mPrevTransform`) and `f_812342c0` (rank 10). They pair `GetFlags` with a
   flush or invalidate, as `SphereQuery_ReadResult` does when a pool is CPU-cached ([culling.md](culling.md)). Under
-  Longshot the flush is free and each invalidate gives up and takes back the virtual core. **read** How often the
+  LS the flush is free and each invalidate gives up and takes back the virtual core. **read** How often the
   invalidates run in play was not measured.
 - **`f_806668b0`** (`Draw_Wait` on [jobs.md](jobs.md)) ends the frame's recording (`ReportCounter`, `EndRecording`,
   `Finalize`), then `QueueFlush`, `QueueSubmitCommands`, `QueueFenceSync` and `nvnSyncWait`: the wait is the host's

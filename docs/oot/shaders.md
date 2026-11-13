@@ -1,26 +1,26 @@
 # Shaders
 
-How Ocarina of Time finds, chooses, makes and binds its shader programs, and what Longshot's Vulkan renderer then does
+How Ocarina of Time finds, chooses, makes and binds its shader programs, and what LS's Vulkan renderer then does
 with each one: from the Ampere (SM86) code in the game's `Nin_Ounce_NVN2` archives, through Eden's shader recompiler, to
 a Vulkan pipeline. The game has three shader systems side by side: nn::g3d's shader archives (`.bfsha`) for its models,
 terrain and UI, agl's own program archives (`sharcb`) for its passes, post effects and compute work, and the networks and
 middleware that carry their own (NDSR, the movie upscaler, the particle effects). Looked at in November 2026: the game's
-half by static analysis of the binary (no builds, no runs), the renderer's half from Longshot's source (`longshot-main`
+half by static analysis of the binary (no builds, no runs), the renderer's half from LS's source (main at
 c67cd4a0). Hot ranks are positions in `hot_order.txt` ([hot-path.md](hot-path.md)).
 
-**Longshot code:** [gpu/vk/vk_shader.cpp](../../gpu/vk/vk_shader.cpp) (the translation, the per-shader fixes, the
-preparation), [gpu/vk/vk_shader.h](../../gpu/vk/vk_shader.h), [gpu/vk/vk_draw.cpp](../../gpu/vk/vk_draw.cpp) (pipelines,
-the precompile, the waits), [gpu/vk/vk_bank.cpp](../../gpu/vk/vk_bank.cpp) (the driver's constant banks),
-[gpu/vk/vk_coopmat.cpp](../../gpu/vk/vk_coopmat.cpp) (the networks' matrix multiplies), [gpu/vk/eden](../../gpu/vk/eden)
-and [gpu/vk/sirit](../../gpu/vk/sirit), [host/nvn_native.c](../../host/nvn_native.c) (the program calls),
-[host/rx_backend.c](../../host/rx_backend.c), [nx2/shader_census.py](../../nx2/shader_census.py) (the archives read before
-the first start), [nx2/pipeline_states.py](../../nx2/pipeline_states.py). The program cache, the loading and the vendor fixes are in `gpu/vk/` too (`vk_progcache.cpp`, `vk_programs.cpp`,
+**LS code:** `gpu/vk/vk_shader.cpp` (the translation, the per-shader fixes, the
+preparation), `gpu/vk/vk_shader.h`, `gpu/vk/vk_draw.cpp` (pipelines,
+the precompile, the waits), `gpu/vk/vk_bank.cpp` (the driver's constant banks),
+`gpu/vk/vk_coopmat.cpp` (the networks' matrix multiplies), `gpu/vk/eden`
+and `gpu/vk/sirit`, `host/nvn_native.c` (the program calls),
+`host/rx_backend.c`, `nx2/shader_census.py` (the archives read before
+the first start), `nx2/pipeline_states.py`. The program cache, the loading and the vendor fixes are in `gpu/vk/` too (`vk_progcache.cpp`, `vk_programs.cpp`,
 `program_life.h`, `vk_vendor.h`, `mesh_mode.h`, `translate_wait.h`, `driver_faults.h`), named below without links.
 **See also:** [drawing.md](drawing.md) (the per-draw material bind and its cache), [nvn-calls.md](nvn-calls.md) (every
-program call and what Longshot does with it), [rendering.md](rendering.md) (the passes, and the programs the renderer
+program call and what LS does with it), [rendering.md](rendering.md) (the passes, and the programs the renderer
 recognises), [culling.md](culling.md) (the meshlet culling task shader), [textures.md](textures.md) (the terrain's
-programs), [effects.md](effects.md) (the particles' compute programs), [../design.md](../design.md),
-[../development.md](../development.md)
+programs), [effects.md](effects.md) (the particles' compute programs), `docs/design.md`,
+`docs/development.md`
 
 ## In short
 
@@ -44,7 +44,7 @@ programs), [effects.md](effects.md) (the particles' compute programs), [../desig
    program, uniform-block and sampler binds follow (`f_802a67c0` rank 627, `f_802a1760` 841, `f_8029f590` 846,
    `f_80296c30` 1111). **read**
 5. **Two recording threads can meet on one agl program.** Its dirty word is taken with an atomic; a second thread that
-   finds it being updated sleeps in a loop until it is done (`f_802a1760`). Under Longshot the sleep is a host call, and
+   finds it being updated sleeps in a loop until it is done (`f_802a1760`). Under LS the sleep is a host call, and
    the update can be a program's first making, which the host answers by asking the renderer to load what it kept.
    **read** (the code), **guess** (how often it happens)
 6. **On the port's side, every program is keyed by its code.** A stage's code key is a hash of its control section and
@@ -70,7 +70,7 @@ programs), [effects.md](effects.md) (the particles' compute programs), [../desig
 | `Movie/Ndve/…` | The movie upscaler's networks (NDVE) | `f_82105e20` | guess |
 | `Effect/*.vsetb.byml.zs` | Particle shaders (a BNSH inside each set) | nn::vfx3 ([effects.md](effects.md)) | guess |
 
-The binary has 10,154 `Nin_Ounce_NVN2` shader files in its romfs ([../design.md](../design.md)); Longshot's census walks
+The binary has 10,154 `Nin_Ounce_NVN2` shader files in its romfs (`docs/design.md`); LS's census walks
 the same folders (`Shader/`, `Layout2Shader/`, `Lib/`, `Movie/`, `Effect/`) and reads each of these formats. Every
 archive is loaded at start-up or with its model, and none of the loaders is ranked. **read**
 
@@ -171,7 +171,7 @@ agl's passes bind their own way, all through four functions that most passes inl
   [rendering.md](rendering.md)). Which task shader a material gets follows its `gsys_meshlet_process_type_*` option:
   passthrough, or one that uses the prepass. **read** (the option), **guess** (that "use prepass" is the culling one)
 - **The networks**: the TAAU and the movie upscaler are compute programs with tensor-core matrix multiplies (HMMA)
-  ([../design.md](../design.md)); Longshot's census finds networks in agl's NDSR packs and in NDVE. **read** (there),
+  (`docs/design.md`); LS's census finds networks in agl's NDSR packs and in NDVE. **read** (there),
   **guess** (which network is in which)
 
 ### The terrain's programs
@@ -328,8 +328,8 @@ gives (on [textures.md](textures.md) as `Tera_Programs`): `tera_material`, `tera
 
 ## Part 2: what the port does with them
 
-Read from Longshot's `main` (c67cd4a0, 13 November 2026). The design notes and the development guide have the switches
-in full ([../design.md](../design.md), [../development.md](../development.md)); this is the shader path through them.
+Read from LS's `main` (c67cd4a0, 13 November 2026). The design notes and the development guide have the switches
+in full (`docs/design.md`, `docs/development.md`); this is the shader path through them.
 
 ### The path, end to end
 
@@ -344,13 +344,13 @@ in full ([../design.md](../design.md), [../development.md](../development.md)); 
    constants `+0x40`…`+0x44`, stage `+0x56`, workgroup `+0x58`) and its code area (a graphics stage's 128-byte header,
    the Ampere instructions, the c1 constants). Its **code key** is a hash of the two (`code_key`).
 3. **SM86 to Maxwell.** `LowerToMaxwell` (`eden/shader_recompiler/frontend/ampere`) lowers the Ampere instructions;
-   HMMA becomes a cooperative-matrix multiply where the GPU has them ([gpu/vk/vk_coopmat.cpp](../../gpu/vk/vk_coopmat.cpp)).
+   HMMA becomes a cooperative-matrix multiply where the GPU has them (`gpu/vk/vk_coopmat.cpp`).
 4. **Maxwell to IR.** Eden's Maxwell front end translates the program, its questions answered from the NVN state: c0
-   and c2 from the driver's banks ([gpu/vk/vk_bank.cpp](../../gpu/vk/vk_bank.cpp)), c1 from the code area, the user
+   and c2 from the driver's banks (`gpu/vk/vk_bank.cpp`), c1 from the code area, the user
    uniform buffers (c3–c18, slots 0–15) from guest memory, texture types from the registered textures. The IR passes
    (`ir_opt`) then run: global memory to storage buffers, the fragment output NaN guard, the HDR tone map.
 5. **IR to SPIR-V** (`backend/spirv`, written with sirit), one `VkShaderModule` a stage (`make_module`). A program's
-   stages share one descriptor set in Eden's order. The pipeline is made in [gpu/vk/vk_draw.cpp](../../gpu/vk/vk_draw.cpp)
+   stages share one descriptor set in Eden's order. The pipeline is made in `gpu/vk/vk_draw.cpp`
    from the variant and the draw state.
 
 **Two meanings of "variant".** The game's variations are chosen by option keys before the renderer sees anything
@@ -367,8 +367,8 @@ yellow), the vertex attributes' types and the colour targets' types (`Program::a
   hash of the translator's sources), the depth mode, the GPU's mesh path, its warp lanes and storage alignment, f16
   support, the C++ library's layouts, the vendor fixes, the float-add path, and every environment switch the
   translation reads (`RX_VK_MESH*`, `RX_VK_NATIVE*`, `RX_VK_NAN*`, `EDEN_*` and the others listed there). A change to any
-  translates every program again. (`disk_stamp` in Hookshot's vk_shader.cpp is the older form:
-  `tests/test_program_cache_format.py` checks that Longshot has no second stamp.)
+  translates every program again. (`disk_stamp` in HS's vk_shader.cpp is the older form:
+  `tests/test_program_cache_format.py` checks that LS has no second stamp.)
 - **`mkw_vk_pipelines.bin`** is the driver's pipeline cache, dropped when `mkw_vk_pipelines.stamp` names another
   translator (`RX_VK_PCACHE_STAMP=0` keeps it). **`longshot_pipelines.bin`** notes every pipeline play made, for the
   precompile.
@@ -376,7 +376,7 @@ yellow), the vertex attributes' types and the colour targets' types (`Program::a
 ### Preparing before the title
 
 - **`longshot_shaders.bin`** (`HKSEED01`) is written by the builder from the player's own romfs
-  ([nx2/shader_census.py](../../nx2/shader_census.py)): every BNSH variation, BAHS program, NDSR and NDVE network and
+  (`nx2/shader_census.py`): every BNSH variation, BAHS program, NDSR and NDVE network and
   particle set, as its control sections and code. Nothing of it goes into the repository.
 - **The preparation** (`seed_open`, `seed_program`, `seed_compute`, vk_shader.cpp) translates each for the default state
   (nothing bound, float inputs and outputs; vertex programs that read attributes 6 and 7 also with integer inputs, for
@@ -387,7 +387,7 @@ yellow), the vertex attributes' types and the colour targets' types (`Program::a
 - **The pipeline state lists** (`longshot_pipeline_states_shipped.bin`, merged from `assets/pipeline_states/`; play adds
   to `longshot_pipeline_states.bin`, compute programs to `longshot_computes.bin`) name pipelines by their shaders'
   hashes and state, so a player's build turns them back into pipelines from their own `longshot_shaders.bin`
-  ([nx2/pipeline_states.py](../../nx2/pipeline_states.py), [../development.md](../development.md)).
+  (`nx2/pipeline_states.py`, `docs/development.md`).
 - **When loads happen** (`RX_VK_LOAD=create` or `start`): at the game's program create call (point 1 above) or all
   before the title. Since the game makes many programs during play (Part 1, *In short* 1), `create` is the mode that
   depends on it.
@@ -481,7 +481,7 @@ compare-exchange loop that gives up after 1024 tries).
   ([drawing.md](drawing.md)) recording passes side by side is possible on the frame a program changes. **read** (the
   loop), **guess** (that it happens in play)
 - **The three NVN ways.** nvn-calls.md counts `nvnProgramSetShaders` at 2 places (`f_806569a0`, `f_812c42c0`),
-  `SetShadersExt` at 1 (`f_812c42c0`) and the builder at 7 (`f_812c42c0`, NDSR's three, NDVE's three). Under Longshot
+  `SetShadersExt` at 1 (`f_812c42c0`) and the builder at 7 (`f_812c42c0`, NDSR's three, NDVE's three). Under LS
   all of them end in the same `set_shaders`, and a builder's program in `nvnProgramInitializeFromBuilder`. **read**
 
 ## Open questions

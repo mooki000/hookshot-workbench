@@ -1,16 +1,16 @@
 # The render pipeline
 
 The game's frame on the GPU: which passes its pipeline has and in what order they run, the render targets each one
-draws into (by the names the game gives them), and what Longshot's Vulkan renderer knows, assumes or works around for
+draws into (by the names the game gives them), and what LS's Vulkan renderer knows, assumes or works around for
 each. Written so a rendering report (a missing wall, a flash, a wrong colour, an AMD-only artefact) can be traced from
 what the renderer sees back to the game's own pass. Looked at in November 2026.
 
-**Longshot code:** [gpu/vk/vk_draw.cpp](../../gpu/vk/vk_draw.cpp) (passes, draws, the per-program workarounds),
-[gpu/vk/vk_temporal.cpp](../../gpu/vk/vk_temporal.cpp) and [gpu/vk/vk_fsr3_inputs.cpp](../../gpu/vk/vk_fsr3_inputs.cpp)
-(the scene's camera, colour and depth, found for DLSS and FSR), [gpu/vk/vk_shader.cpp](../../gpu/vk/vk_shader.cpp)
-(per-shader fixes), [gpu/vk/vk_dump.cpp](../../gpu/vk/vk_dump.cpp) (frame dumps)
+**LS code:** `gpu/vk/vk_draw.cpp` (passes, draws, the per-program workarounds),
+`gpu/vk/vk_temporal.cpp` and `gpu/vk/vk_fsr3_inputs.cpp`
+(the scene's camera, colour and depth, found for DLSS and FSR), `gpu/vk/vk_shader.cpp`
+(per-shader fixes), `gpu/vk/vk_dump.cpp` (frame dumps)
 **See also:** [culling.md](culling.md) (the z-prepass queries), [textures.md](textures.md) (the terrain's tiles),
-[graphics.md](graphics.md) (resolution, the render-target pool), [../design.md](../design.md)
+[graphics.md](graphics.md) (resolution, the render-target pool), `docs/design.md`
 
 ## In short
 
@@ -76,7 +76,7 @@ targets at once. Deferred scenes elsewhere would show up as multi-target spans a
 
 ## Other places
 
-Two more traced frames (`RX_VK_PASS_TRACE_AT=900`, with dumps from `RX_VK_DUMP_FILE`), on a Longshot build of 12 November
+Two more traced frames (`RX_VK_PASS_TRACE_AT=900`, with dumps from `RX_VK_DUMP_FILE`), on a LS build of 12 November
 2026, reached with the debug tools' teleport: Hyrule Field at the Lost Woods bridge, inside the Deku Tree, and Lake Hylia (child
 Link swimming). This build
 draws the scene at the picture's full 2560 x 1152, so its half- and quarter-size passes are 1280 x 576 and 640 x 288.
@@ -173,8 +173,8 @@ pass each belongs to is from the names (**guess** where marked).
 
 - **Fog and haze:** light probes past the pool's end (white haze, `RX_VK_BARE_READ_MB`); a clear gets a span of its own (a
   flat band of fog); presentation work no longer runs ahead of scene work (last frame's fog and sun shafts, PR 430). The
-  OoT fog (0.25) and exposure (0.65) factors that [../design.md](../design.md) still calls necessary were removed
-  (Hookshot #2042, Longshot issue 124).
+  OoT fog (0.25) and exposure (0.65) factors that `docs/design.md` still calls necessary were removed
+  (HS #2042, LS issue 124).
 - **The white forest:** on Intel the EQUAL depth test becomes LEQUAL with a bias (`RX_VK_EQ_BIAS`), and uniforms are
   snapshotted (`RX_VK_UB_SNAPSHOT`, #2419): the prepass drew the ground with other objects' matrices.
 - **The sky:** its 256 x 256 LUT is never evicted (the rainbow sky).

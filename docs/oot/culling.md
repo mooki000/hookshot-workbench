@@ -1,14 +1,14 @@
 # Culling
 
-How the game decides what not to draw, and how well each part of that survives in Longshot. The game culls in several
+How the game decides what not to draw, and how well each part of that survives in LS. The game culls in several
 layers: z-prepass occlusion queries that gate later passes on the GPU, sphere queries whose results the CPU reads back,
 its own meshlet culling in task shaders, and scene managers that cull by area, distance and precomputed data. Looked at
 in November 2026, from the binary and from how the renderers answer the game's queries.
 
-**Longshot code:** [nx2/oot_occlusion.py](../../nx2/oot_occlusion.py) (Occlusion Off), [host/nvn_native.c](../../host/nvn_native.c)
-(the query and condition commands recorded), [gpu/vk/vk_replay.cpp](../../gpu/vk/vk_replay.cpp) (the Vulkan renderer's
-answers), [gpu/render/rx_core.cpp](../../gpu/render/rx_core.cpp) and [gpu/render/rx_nvn.cpp](../../gpu/render/rx_nvn.cpp)
-(the WebGPU renderer's), [gpu/vk/vk_shader.cpp](../../gpu/vk/vk_shader.cpp) (`RX_VK_MESH_NOCULL`)
+**LS code:** `nx2/oot_occlusion.py` (Occlusion Off), `host/nvn_native.c`
+(the query and condition commands recorded), `gpu/vk/vk_replay.cpp` (the Vulkan renderer's
+answers), `gpu/render/rx_core.cpp` and `gpu/render/rx_nvn.cpp`
+(the WebGPU renderer's), `gpu/vk/vk_shader.cpp` (`RX_VK_MESH_NOCULL`)
 **See also:** [graphics.md](graphics.md), [jobs.md](jobs.md), [camera.md](camera.md)
 
 ## In short
@@ -23,7 +23,7 @@ answers), [gpu/render/rx_core.cpp](../../gpu/render/rx_core.cpp) and [gpu/render
    a sphere: `UseOcclusionQuerySphere`) is visible. The result is read on the CPU a frame or two later, from a ring of
    three, and "visible" means the count is not 0. **read** The sun's visibility follows the samples-passed counts too
    (PR #487); which reader it goes through was not traced.
-3. **Longshot's default renderer (Vulkan) writes every samples-passed report as 4096.** So no z-prepass query ever culls
+3. **LS's default renderer (Vulkan) writes every samples-passed report as 4096.** So no z-prepass query ever culls
    an object and every sphere is always visible. The game still pays for every query. **tested** (PR #487)
    `RX_VK_OCC_QUERIES=1` (branch `fix/vk-occlusion-queries`) gives the reports the GPU's real counts: see
    [Measurements](#measurements).
@@ -32,9 +32,9 @@ answers), [gpu/render/rx_core.cpp](../../gpu/render/rx_core.cpp) and [gpu/render
 5. **Area, system, distance and precomputed culling** decide which actors and models exist at all. They don't touch the
    GPU, so the renderer can't break them; they are located below but not yet read.
 
-## How it fares in Longshot
+## How it fares in LS
 
-| Layer | What the game expects | What Longshot gives it | Effect |
+| Layer | What the game expects | What LS gives it | Effect |
 |---|---|---|---|
 | Z-prepass queries (Vulkan, the default) | A real sample count per object, read back a frame or two later | 4096, written on the CPU as the replay reaches the report (`RX_VK_OCC_FIXED`, `-1` for a count of 16 a draw) | **Culling off.** Every object is drawn in every later pass, as if nothing hid it |
 | Z-prepass queries (WebGPU) | The same | Real counts from WebGPU occlusion queries (`RX_OCCLUSION_QUERIES`, on by default), written after the GPU finishes the batch, so the condition reads the last value | **Works, late.** An object coming out from behind something can stay culled for a frame; past 1024 queries a batch, counts are estimated |
@@ -51,7 +51,7 @@ answers), [gpu/render/rx_core.cpp](../../gpu/render/rx_core.cpp) and [gpu/render
   real counts save a fraction of that, more where more is hidden.
 - **CPU:** every object in the z-prepass still records a reset and a report, and every conditional draw a condition
   and a re-enable. That's in the lifted code and in the host's NVN recorder, for no benefit on Vulkan. The NVN library's
-  inline-command switch (`0x85ff20a8`, in its zero-initialised data) is never set under Longshot, so each of these is a
+  inline-command switch (`0x85ff20a8`, in its zero-initialised data) is never set under LS, so each of these is a
   call through the NVN function table rather than a few words written into the command buffer. **guess**
 - **Risk:** where the conditional path runs, the condition is "render if not equal" against a half of the slot the game
   never writes. That half has to stay 0. If it ever held 4096, its object would vanish on Vulkan. **guess** (not seen
@@ -132,7 +132,7 @@ Located by the names they use; not read yet. Whether a map uses occlusion cullin
 | `0x84d67f78` | `pfn_nvnCommandBufferSetRenderEnableConditional` | The same for `nvnCommandBufferSetRenderEnableConditional` (GOT `0x84cae870`) | read |
 | `0x84d674a8` | `pfn_nvnBufferGetAddress` | The same for `nvnBufferGetAddress` | read |
 | `0x84aaace0` | `QueryGenericIsVisibleByOcclusionQuery_vtable` | The sphere query node's vtable | read |
-| `0x85ff20a8` | `nvnPrivate0` | An SDK export (main reads it through `[0x84ca2dd8]`, at 1,871 places): when set, the game writes commands straight into the command buffer instead of calling NVN. The SDK's own `nvnDeviceGetProcAddress` sets it on the console; under Longshot that code never runs, so it stays 0 and every place makes the call ([nvn-calls.md](nvn-calls.md)) | read |
+| `0x85ff20a8` | `nvnPrivate0` | An SDK export (main reads it through `[0x84ca2dd8]`, at 1,871 places): when set, the game writes commands straight into the command buffer instead of calling NVN. The SDK's own `nvnDeviceGetProcAddress` sets it on the console; under LS that code never runs, so it stays 0 and every place makes the call ([nvn-calls.md](nvn-calls.md)) | read |
 
 The NVN loader (`0x812be290`) stores each name's pointer there; the code calls through them.
 

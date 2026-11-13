@@ -1,15 +1,15 @@
 # The hot path
 
 Where the game spends its CPU time, function by function: the 200 hottest functions of the sampled profile that
-Longshot's build orders its code by, each put in a subsystem and pointed at the page that documents it. Looked at in
+LS's build orders its code by, each put in a subsystem and pointed at the page that documents it. Looked at in
 November 2026 by static analysis of the binary (strings, callers and callees, vtables, address ranges), building on the
 frame's critical path measured in [jobs.md](jobs.md). This page is an index, not a home: a function keeps its row on its
 subsystem's page, and the tables here use their own header, so the check does not read them.
 
-**Longshot code:** [nx2/build.py](../../nx2/build.py) (`HOT_ORDER`: links the lifted functions in `hot_order.txt`'s
-order), [nx2/make_game.py](../../nx2/make_game.py) (copies `hot_order.txt` and `hot_funcs.txt` into a build, and sets
-`A64_HOT_FUNCS`), [scripts/hotlist.py](../../scripts/hotlist.py) (a hot list from an all-thread sample),
-[nx2/split_hot.py](../../nx2/split_hot.py) (`code_hot.c` in pieces), [scripts/crit.py](../../scripts/crit.py) (the
+**LS code:** `nx2/build.py` (`HOT_ORDER`: links the lifted functions in `hot_order.txt`'s
+order), `nx2/make_game.py` (copies `hot_order.txt` and `hot_funcs.txt` into a build, and sets
+`A64_HOT_FUNCS`), `scripts/hotlist.py` (a hot list from an all-thread sample),
+`nx2/split_hot.py` (`code_hot.c` in pieces), `scripts/crit.py` (the
 critical path)
 **See also:** [jobs.md](jobs.md) (the job phase and its critical path), [actors.md](actors.md) (the five per-actor jobs),
 [rendering.md](rendering.md), [frame-time.md](frame-time.md), and this batch's pages [drawing.md](drawing.md), [nvn-calls.md](nvn-calls.md), [physics.md](physics.md), [animation.md](animation.md) and [ai.md](ai.md)
@@ -234,7 +234,7 @@ An assignment from callers, ranges or neighbours alone is a guess; the *What it 
 | 87 | `f_806f5860` | Sound | 28 KB of maths (pow, exp, atan2, acos), called from `searchAndEmit(%s)` / `getSoundHandle` and `getAliveAssetExecutor`: **guess**, sound links' parameter curves | callers | [audio.md](audio.md) |
 | 88 | `f_80ba6d80` | Unexplained | Called from a function naming `Skl_Root` and one naming `XLinkVariationId` | callers | not documented |
 | 89 | `f_80162aa0` | Havok Cloth | The cloth wrapper's range; from `f_80168320` and Link's movement | range | [physics.md](physics.md) |
-| 90 | `f_802c7420` | Actor update | Called from 20 actor functions (Hookshot, horse, Fly, slot 52…); calls the unidentified library (`f_814f8f60`, …) | callers | [actors.md](actors.md) |
+| 90 | `f_802c7420` | Actor update | Called from 20 actor functions (HS, horse, Fly, slot 52…); calls the unidentified library (`f_814f8f60`, …) | callers | [actors.md](actors.md) |
 | 91 | `f_81b38800` | Havok Cloth | `hclSimClothInstance::updateAabbs` | str | [physics.md](physics.md) (row) |
 | 92 | `f_81746440` | Havok Physics | Havok Physics (0x8174…), reached from `hkTask::processTask` | range | [physics.md](physics.md) |
 | 93 | `f_81a465e0` | Havok Physics | A shape query (calls `castShape`) | callees | [physics.md](physics.md) (row) |

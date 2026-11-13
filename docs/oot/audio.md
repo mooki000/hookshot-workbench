@@ -3,14 +3,14 @@
 The game's sound system: the sound engine on top (alto and aal, with the SLink2 sound links), the audio framework under
 it that builds the `nn::audio` renderer's graph and renders on its own thread, the effects it asks for, how the voice
 files are found, and how the voice language is picked. It was looked at in November 2026 by static analysis of the binary,
-the RomFS file names and Longshot's logs, for "Voices in the wrong language" (#1460) and for the `nn::audio` imports the
+the RomFS file names and LS's logs, for "Voices in the wrong language" (#1460) and for the `nn::audio` imports the
 log shows as unimplemented.
 
-**Longshot code:** [host/nn_audio.c](../../host/nn_audio.c) (the renderer, voices, mixes, splitters, I3DL2 reverb,
-voice biquads, the light limiter, the output), [host/nn_audio_in.c](../../host/nn_audio_in.c) (the input streams: the
-ocarina's microphone), [host/nn_applet.c](../../host/nn_applet.c) (`GetDesiredLanguage`: `language.txt`),
-[nx2/standalone.py](../../nx2/standalone.py) (which imports get the generic stub),
-[third_party/a64-kit/rt/a64_rt.c](../../third_party/a64-kit/rt/a64_rt.c) (`a64_unimplemented`); tests
+**LS code:** `host/nn_audio.c` (the renderer, voices, mixes, splitters, I3DL2 reverb,
+voice biquads, the light limiter, the output), `host/nn_audio_in.c` (the input streams: the
+ocarina's microphone), `host/nn_applet.c` (`GetDesiredLanguage`: `language.txt`),
+`nx2/standalone.py` (which imports get the generic stub),
+`third_party/a64-kit/rt/a64_rt.c` (`a64_unimplemented`); tests
 `tests/test_audio_*.py`
 **See also:** [jobs.md](jobs.md) (`f_80b1ff40`, the SoundModule job), [master-quest.md](master-quest.md) (the region and
 language manager, `RegionLangMask.txt`), [game-data.md](game-data.md) (`option.sav`, the game data by hash),
@@ -25,10 +25,10 @@ language manager, `RegionLangMask.txt`), [game-data.md](game-data.md) (`option.s
 2. **The renderer.** 48 kHz, 240-sample frames, 30 mix buffers, 96 voices, 4 sub mixes, 10 effects, 96 splitters, out
    through one device sink, "MainAudioOut", with the channel map 0 to 5. The thread waits for the renderer's event, then
    updates the graph and calls `RequestUpdateAudioRenderer`. A second mode (manual rendering into a circular-buffer sink,
-   written out through an `OutputStream`) is in the code; Longshot's logs never reach it. **read**
+   written out through an `OutputStream`) is in the code; LS's logs never reach it. **read**
 3. **Effects.** In the logs the game adds a **Reverb** (not the I3DL2 one), a **Delay**, a **BiquadFilter** and an
-   **Aux** to its sub mixes, and sets splitter biquad filters. Longshot implements none of these. The stubs log once and
-   return 0, which the game takes as success, so the sound goes out dry. Longshot does implement the I3DL2 reverb, the
+   **Aux** to its sub mixes, and sets splitter biquad filters. LS implements none of these. The stubs log once and
+   return 0, which the game takes as success, so the sound goes out dry. LS does implement the I3DL2 reverb, the
    voices' own biquads and the light limiter. **read** (the code), the log (which ones are called)
 4. **Voice files** are named by a region-language code: `Voice/Resource/<code>_EventFlowMsg-…bars` and
    `Voice/Resource/Stream/<code>_EventFlowMsg-…bwav`. The dump has nine codes: `JPja`, `USen`, `USes`, `USfr`, `USpt`,
@@ -43,17 +43,17 @@ language manager, `RegionLangMask.txt`), [game-data.md](game-data.md) (`option.s
    `OptionData.VoiceLanguage` with Japanese (the game data's default) or with a value outside the nine. **guess** (what
    writes it is not found)
 
-## How Longshot covers the imports
+## How LS covers the imports
 
 The game imports 253 `nn::audio` functions. 125 have an HLE in `host/` (`nn_audio.c`, `nn_audio_in.c`). The 4
 `nn::audio::detail::Fft*` functions are not OS-facing (`os_facing` in `nx2/standalone.py`), so the SDK's own code runs.
 The other 124 get the generic stub: `a64_unimplemented` logs the import once and returns 0 in `x0`, and leaves `s0`
 alone (so a float getter returns whatever `s0` held). **read** Every one of the 253 has a direct caller in `main`.
 
-| Feature | What the game imports | Longshot | What the game gets |
+| Feature | What the game imports | LS | What the game gets |
 |---|---|---|---|
 | Renderer, config, memory pools | Open/Start/Stop/Close, `RequestUpdateAudioRenderer`, elapsed frames, buffer sizes, pools | HLE: a mixer thread renders 240 samples every 5 ms and signals the event | Works. `ExecuteAudioRendererRendering` (manual mode) is stubbed and never called in the logs |
-| Voices | Acquire/Release, play state, volume, pitch, mix volumes, destinations, wave buffers, played count, priority | HLE: PCM16, float, DSP-ADPCM, resampled; `SetVoicePriority` ignored; `IsVoiceDroppedFlagOn` always 0 | Works. `SetVoiceSrcQuality` is stubbed (the resampler is Longshot's own) |
+| Voices | Acquire/Release, play state, volume, pitch, mix volumes, destinations, wave buffers, played count, priority | HLE: PCM16, float, DSP-ADPCM, resampled; `SetVoicePriority` ignored; `IsVoiceDroppedFlagOn` always 0 | Works. `SetVoiceSrcQuality` is stubbed (the resampler is LS's own) |
 | Voice biquads | `SetVoiceBiquadFilterParameter` (the float form) | HLE (`test_audio_voice_biquad.py`); v2.0.14 logged it as unimplemented, `main` has it | Works on `main` |
 | Mixes and splitters | Final and sub mixes, volumes, destinations, splitter destinations and volumes | HLE | Works |
 | Splitter biquads | `SetSplitterBiquadFilterParameter` (sub mix and final mix forms), 7 callers each | Stubbed (in the log) | No filtering on splitter sends |
@@ -100,7 +100,7 @@ The unimplemented `nn::audio` imports in the local logs (v2.0.14, five runs) are
 | `f_836f51d0` | `AudioFrameworkThread_Run(thread)` | Slot 14 of `0x84c38238`. While the framework (`thread+0xd8`) runs: in manual mode it calls the frame back to back. Otherwise it waits for the renderer's system event (`f_836f6ff0`, `WaitSystemEvent`), moves itself to the core that `f_83499e60` picks from the table at `thread+0xe0` when that changes (`SetThreadCoreMask`, the core kept at `+0xe8`; 0x21 means none), and calls `f_836f52d0` | read |
 | `f_836f52d0` | `AudioFramework_Frame(fw, arg)` | One audio frame: `GetAudioRendererElapsedFrameCount`, the voice and mix updates (`f_836f7040`, `f_83700f40`, `f_836f71f0`), then `RequestUpdateAudioRenderer`. Only when both `arg+4` and `fw+4` are 1 does it call `ExecuteAudioRendererRendering`. Then the wave buffers (`f_801ea5a0`) and the circular sink's read | read |
 | `f_836f5c40` | `AudioFramework_CloseOutputStream` | Writes its last blocks, stops and closes the manual mode's `OutputStream` | guess |
-| `f_80f72ea0` | `AudioDevice_GetOutputVolume(dev, i)` | `GetAudioDeviceOutputVolume` of output `i` (0 to 2; the names at `[dev+0x188] + 256*i`, likely "AudioTvOutput", "AudioExternalOutput", "AudioBuiltInSpeakerOutput"), 0.0 for others. Stubbed in Longshot, so `s0` comes back unchanged | read |
+| `f_80f72ea0` | `AudioDevice_GetOutputVolume(dev, i)` | `GetAudioDeviceOutputVolume` of output `i` (0 to 2; the names at `[dev+0x188] + 256*i`, likely "AudioTvOutput", "AudioExternalOutput", "AudioBuiltInSpeakerOutput"), 0.0 for others. Stubbed in LS, so `s0` comes back unchanged | read |
 
 ### Effects
 
@@ -228,7 +228,7 @@ French_Canada 0x7d30fc45, German 0x515b9eeb, Spanish_Spain 0x33c26987, Spanish_L
 
 ### The voice language, step by step
 
-1. **The system language.** `GetDesiredLanguage` (Longshot: `language.txt` or `HOS_LANGUAGE`, 16 codes, default
+1. **The system language.** `GetDesiredLanguage` (LS: `language.txt` or `HOS_LANGUAGE`, 16 codes, default
    `en-US`) gives a region (`f_811f32f0`) and a language (`f_811f35f0`). **read**
 2. **The region-language type.** The manager picks the type from the pair, kept to the types in
    `System/RegionLangMask.txt`. In the dump its first line lists 17 codes, all but `EUpt`. So European Portuguese becomes
@@ -250,7 +250,7 @@ French_Canada 0x7d30fc45, German 0x515b9eeb, Spanish_Spain 0x33c26987, Spanish_L
 | es, fr, de, it | EUes, EUfr, EUde, EUit | their own |
 | ja, zh-Hans, zh-Hant (and pt) | JPja, CNzh, TWzh, EUen (EUpt is not in the mask) | Japanese, Japanese, Japanese, English |
 
-`th` and `pt` are codes the game knows but Longshot's `language.txt` does not offer. **read**
+`th` and `pt` are codes the game knows but LS's `language.txt` does not offer. **read**
 
 ### What #1460 points at
 
@@ -269,7 +269,7 @@ relative to the first update of `game::NpcVoiceResource`, and what resets `Reset
 
 ### Frame rate
 
-The audio frame is the renderer's (240 samples, 5 ms), run on "AudioFrameworkThread" from the renderer's event. Longshot's
+The audio frame is the renderer's (240 samples, 5 ms), run on "AudioFrameworkThread" from the renderer's event. LS's
 mixer signals that event on its own clock (`renderer_main`), so the sound does not follow the game's frame rate. The game
 side (the SoundModule job, [jobs.md](jobs.md)) runs once a game frame. **read**
 
@@ -280,9 +280,9 @@ side (the SoundModule job, [jobs.md](jobs.md)) runs once a game frame. **read**
 - What `ResetTypeValue` 4 means, and which reset uses it.
 - What `f_80a9d330` does for a type without a `LanguageMapping` entry (EUpt, EUnl, EUru, KRko, CNzh, TWzh, EUpl,
   THth); `MessageVoiceMgr_Init` can pass one.
-- Whether the game ever adds the I3DL2 reverb (Longshot's is implemented) or only the plain Reverb the log shows.
+- Whether the game ever adds the I3DL2 reverb (LS's is implemented) or only the plain Reverb the log shows.
 - How much the missing Reverb, Delay and BiquadFilter effects and splitter biquads change the sound (rooms, underwater,
   `RoomReverbControllerSetting`, `EnableBgmInWaterFilter`).
-- How the movies' sound reaches the output in Longshot, since the movie player's `OutputStream` path is never logged.
+- How the movies' sound reaches the output in LS, since the movie player's `OutputStream` path is never logged.
 - The `%s` variant string's source object (`0x84ea4e08`) and how it becomes `Product.111`.
 - Which object `f_801e9c80` and `f_806ab700` feed (the aux effects), now that they read no samples.

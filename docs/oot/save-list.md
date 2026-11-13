@@ -3,7 +3,7 @@
 The list of saves behind Continue on the title and Load in the pause menu, the save cards it shows, the confirm screen after
 a pick, and the game's generic scrolling list underneath. Looked at for the save slots work (November 2026).
 
-**Longshot code:** none yet
+**LS code:** none yet
 **See also:** [save-data.md](save-data.md) (the captions the cards show), [layout.md](layout.md) (panes, text, animations,
 capture panes)
 

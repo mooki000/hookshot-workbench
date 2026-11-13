@@ -8,8 +8,8 @@ is the ninth-hottest function in the profiles. Looked at in November 2026 by sta
 frame-rate work: which parts are hot, what they cost per bone or per actor, and which of them count frames rather than
 time.
 
-**Longshot code:** none yet. The step these parts read is the one `patch_frame_seconds` sets
-([nx2/oot_patches.py](../../nx2/oot_patches.py), [frame-time.md](frame-time.md)).
+**LS code:** none yet. The step these parts read is the one `patch_frame_seconds` sets
+(`nx2/oot_patches.py`, [frame-time.md](frame-time.md)).
 **See also:** [actors.md](actors.md) (the five jobs, the LOD and calc-skip settings), [frame-time.md](frame-time.md) (the
 step and the frame-time keeper), [jobs.md](jobs.md), [culling.md](culling.md) (the sphere queries),
 [hot-path.md](hot-path.md) (the hot ranks), [maps.md](maps.md) (the ActorInfo row's animation fields)

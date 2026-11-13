@@ -4,9 +4,9 @@ Where a save goes: the files and their slots, the worker that reads and writes t
 the save list shows of each slot (place, date, screenshot, hearts, medallions). Looked at for the save slots work (November
 2026).
 
-**Longshot code:** [host/nn_fs.c](../../host/nn_fs.c) (the `save:` mount)
+**LS code:** `host/nn_fs.c` (the `save:` mount)
 **See also:** [save-list.md](save-list.md), [game-data.md](game-data.md) (what is in the files),
-[master-quest.md](master-quest.md) (its slots), [../saves.md](../saves.md) (where Longshot keeps saves)
+[master-quest.md](master-quest.md) (its slots), `docs/saves.md` (where LS keeps saves)
 
 ## The caption manager
 
@@ -82,6 +82,6 @@ The file names are not in the code: they come from the game data's `SaveDirector
 - `f_832e1db0` is `SeqExecuteLoadSaveData`'s slot 29 (OnEnter), not an evaluate: Execute nodes have no slot 39 ([sequences.md](sequences.md)). **read**
 - Six is everywhere: the caption arrays, the slot chooser (`f_830506a0`), the manual save index (`f_83310630`), the latest
   index's copy (`f_833cd5d0`) and the save list's length. Loading (`f_832e1db0`) has no such limit.
-- Longshot's side is `host/nn_fs.c`: `MountSaveData` mounts `save:` on `<game>\user\save\<user id>`, once, at boot;
+- LS's side is `host/nn_fs.c`: `MountSaveData` mounts `save:` on `<game>\user\save\<user id>`, once, at boot;
   `mount()` adds or replaces a mount's folder; `host_path()` turns `save:/slot_00/progress.sav` into the file on disk, one to
   one.

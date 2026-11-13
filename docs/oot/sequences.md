@@ -7,9 +7,9 @@ graphs. This page covers how a node class is registered and found, how a node is
 shape every node's vtable has, how a node is run, and a catalogue of the 5,716 registered classes. It was looked at in
 November 2026 by static analysis of the binary and of the loose `.ainb` files' node tables.
 
-**Longshot code:** [host/hos_main.c](../../host/hos_main.c) (the debug tools: it calls `OneShotAddOrRemovePouchContent`'s
+**LS code:** `host/hos_main.c` (the debug tools: it calls `OneShotAddOrRemovePouchContent`'s
 calc on a node it builds on the stack, and the functions behind `QueryGetPouchContentNumByActorName`, `ExecuteWmSetTime`,
-`SeqOneShotRequestEvent` and `OneShotPhysicsCctChangePosition`; see [Longshot](#longshot))
+`SeqOneShotRequestEvent` and `OneShotPhysicsCctChangePosition`; see [LS](#ls))
 **See also:** [master-quest.md](master-quest.md) (the title's nodes, `SeqQueryHasAoCMQ`), [events.md](events.md) (the
 event request), [save-data.md](save-data.md), [save-list.md](save-list.md), [game-data.md](game-data.md) (the hashes),
 [player.md](player.md) (the pouch nodes), [maps.md](maps.md), [culling.md](culling.md), [textures.md](textures.md),
@@ -346,7 +346,7 @@ OnEnter/OnUpdate/OnLeave (29/30/31). The kind's base class turns these into calc
 The argument OnEnter and OnUpdate get is 8 bytes and a float (two floats for the AI one-shots); what it holds was not
 followed. Which code calls slots 7 and 8 on a graph's root each frame was not found (see *Open questions*). **read**
 
-### Longshot
+### LS
 
 `host/hos_main.c` reaches into these classes for the debug tools. **read** (from the code; the tools themselves are
 **tested** on their own pages)

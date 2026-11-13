@@ -6,8 +6,8 @@ the BaseProcExecutors, the resident actors (Link among them), and the settings t
 updated at all. Looked at in November 2026 by static analysis of the binary, for the frame-rate work:
 [jobs.md](jobs.md) found the frame bound by the game's logic on the CPU, and the actors are most of that logic.
 
-**Longshot code:** [host/hos_main.c](../../host/hos_main.c) (`hos_oot_is_player`, `hos_oot_lift_player`, the flight and the
-pouch calls), [nx2/oot_patches.py](../../nx2/oot_patches.py) (`patch_life`, `patch_movement`)
+**LS code:** `host/hos_main.c` (`hos_oot_is_player`, `hos_oot_lift_player`, the flight and the
+pouch calls), `nx2/oot_patches.py` (`patch_life`, `patch_movement`)
 **See also:** [jobs.md](jobs.md) (the pools, stage 5, the BaseProc phase), [player.md](player.md) (Link's movement, health
 and pouch), [maps.md](maps.md) (the layouts, the actor packs and ActorParam, the actor registry), [culling.md](culling.md),
 [events.md](events.md)
@@ -19,7 +19,7 @@ and pouch), [maps.md](maps.md) (the layouts, the actor packs and ActorParam, the
    on the engine's actor base (vtable `0x84c7b7a8`). What an actor does comes from its **components**, named by its
    ActorParam's `Components` ([maps.md](maps.md), *What an actor is made of*): two registries map a component's name to
    its maker, the engine's 28 (`f_81209b40`: AS, AIInfo, Physics, Model, LOD, CalcSkip, …) and the game's
-   (`f_8122db20`, about 109 entries: Life, Player, BSA, Hookshot, Npc…, Weapon, …). **read**
+   (`f_8122db20`, about 109 entries: Life, Player, BSA, HS, Npc…, Weapon, …). **read**
 2. **Creating and deleting** goes through requests. A placement (a map's layout, [maps.md](maps.md)) or an event node
    (`SeqExecuteCreateActor`, `ExecuteGenericRequestCreateActor`) asks the actor manager for an actor by name
    (`f_80392a70`: the pack is loaded, the instance registered); the BaseProc manager (`[0x84eb0d90]`) keeps three request
@@ -53,7 +53,7 @@ and pouch), [maps.md](maps.md) (the layouts, the actor packs and ActorParam, the
 | `f_80ad3230` | `GameActor_Create(heap, align, arg)` | Allocates 0x788 bytes from the heap (its vtable `+0x30`), runs the engine's actor constructor `f_80ad3480` and sets the vtable `0x84b45e18` | read |
 | `f_80ad3480` | `ActorBase_Construct(actor, arg)` | The engine's actor constructor: sets the base vtable `0x84c7b7a8` and clears the fields. Also called from `f_83aeff60` | read |
 | `f_81209b40` | `EngineComponents_Register` | Registers the engine's components by their ActorParam names: Blackboard, ModelInfo, ModelBind, ASInfo, ASOptimize, Animation, RetargetScale, AS, AIInfo, Physics, ELink, SLink, XLink, Reaction, EventMember, EventPerformer, BeforehandLoadEvent, Camera, GameParameterTable, LOD, CalcSkip, CppExecutorParam, NaviAnimator, Pathfinding, Obstacle, BoneBind, Destruction, MotionMatching | read |
-| `f_8122db20` | `GameComponents_Register` | Registers the game's components (about 109 entries), each a `{type, name, maker}` entry (from `0x84e42f90` on): Accessory to WorldInfo, with Life (0x280 bytes), Player, BSA (0xc0), Physics, Hookshot, NpcMovementInfo, Weapon and others | read |
+| `f_8122db20` | `GameComponents_Register` | Registers the game's components (about 109 entries), each a `{type, name, maker}` entry (from `0x84e42f90` on): Accessory to WorldInfo, with Life (0x280 bytes), Player, BSA (0xc0), Physics, HS, NpcMovementInfo, Weapon and others | read |
 | `f_829c3780` | `QueryActorGetBaseProcId_Evaluate` | Returns the node's actor's BaseProc ID, the 32-bit word at actor `+0x18`; the actor is the node's `f_80853d60` ([input.md](input.md)), and the name getter `f_829c38c0` | read |
 
 ### The five jobs each actor runs

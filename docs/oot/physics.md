@@ -11,7 +11,7 @@ critical path. A second pass the same month went inside Havok Physics' step (its
 world's settings) and settled where the time step comes from. The focus is what runs each frame, what it costs, and how
 its time step is chosen.
 
-**Longshot code:** none touches physics itself. The movement-speed row scales a character controller's speed before the
+**LS code:** none touches physics itself. The movement-speed row scales a character controller's speed before the
 physics step uses it (`patch_cct_speed`, [player.md](player.md)).
 **See also:** [jobs.md](jobs.md) (the pools, stage 5, the BaseProc phase, the narrow-phase task's row),
 [actors.md](actors.md) (the Physics component, the per-actor jobs, cloth skipping), [player.md](player.md) (the
@@ -35,7 +35,7 @@ files), [frame-time.md](frame-time.md) (the step and the clock), [hot-path.md](h
    solver's step count from the frame step: `(int)(frame step × the steps of a 60 fps frame + 0.001)` into the solver's
    `+712` (`f_838ceb80`, `f_838cfc10`; `DF+0x38` × `DF+0x244`), 8 a 60 fps frame in the places seen, 4 at 120 fps.
    Cut short, the count moves the world less than the frame's time: at 120 fps a moving platform in the Deku Tree slid
-   out from under Link (issue 1798), so above 60 fps Longshot rounds the count up (`hos_oot_solver_steps`, Longshot's `host/oot_high_fps.h`).
+   out from under Link (issue 1798), so above 60 fps LS rounds the count up (`hos_oot_solver_steps`, LS's `host/oot_high_fps.h`).
    **read** (from that header and its fix). How Havok divides `DF+0x24` over the steps was not traced.
 3. **One Havok step per world per frame, its substep count set from the frame step** (*In short* 2). The world's
    description holds a count of its own (`hknpWorldCinfo+0xdc`, from the world config's `+0x6c`; Havok's default is 4),
@@ -91,11 +91,11 @@ The root object is `[0x84ea7ff0]` (reached through the GOT slot `0x84c9df00`). I
 | `f_806a4570` | `PhysicsWorldJob0_Run` | World 0's update, hot rank 3306. Counts at `[0x84eb5fe0]+0x44`. In single-threaded mode (the proc's `+0x270` is 1) it pushes nothing here. Otherwise it calls `f_806a48f0` with world index 0, the job pool at `[0x84eb1920]+0x138`, the context at `+0x140` (`+0x1b0` when bit 0 of `+0x1d3` is set), priority 0x8000 and a phase mask: 0x3ff, or 0x10c (no world step) when the bit for the phase hash 0x51897502 is set in the job's mask table (**guess**: a physics pause) | read |
 | `f_806a4140` | `PhysicsWorldJob1_Run` | The same for world 1 (counter `+0x48`), hot rank 2035 | read |
 | `f_806a48f0` | `DynamicsFramework_AddUpdateWorldJobs(df, pool, ctx, …, w7 = priority)` | Hot rank 1109. Stores the pool and context at `DF+0x460`/`+0x468`, the world index at `+0x4d4` and the phase mask at `+0x4d8`. Pushes seven job records into the frame's graph (`+0x478` to `+0x4b8`), the first waiting on a job of the context; each phase links the next as it runs. Each is a delegate (vtable `0x84c56878`) on the DF: "[Phive] updateWorldPreImplExtCallPhase1_" (`f_838cfc10`), "…Phase2_" (`0x80374740`), "…Phase3_" (`f_803749e0`), "updateWorldPostImplExtCallPhase1_" (`f_80380a20`), "…Phase2_" (`0x80375320`), "…Phase3_" (`0x838cf8e0`), "…Phase1Ext_" (`0x803766b0`). With `DF+0x1a0` set it pushes a single job instead ("DynamicsFramework::updateWorldSingleThreadExtCall_") | read |
-| `f_838cfc10` | `DF_PreImplPhase1` | Hot rank 1994. Keeps the previous step (`+0x34` = `+0x2c`) and queues phase 2. It applies the solver settings to world 0: substeps (wrapper slot 17) = `(int)(+0x38 × +0x244 + 0.001)`, the frame step times the steps of a 60 fps frame (set each update, Longshot's `host/oot_high_fps.h`), tau and damping (slot 18) = `+0x234 × (+0x4c)²` and `+0x23c`. The static reading saw this under the DF's dirty bits (`+0x1c`) | read |
+| `f_838cfc10` | `DF_PreImplPhase1` | Hot rank 1994. Keeps the previous step (`+0x34` = `+0x2c`) and queues phase 2. It applies the solver settings to world 0: substeps (wrapper slot 17) = `(int)(+0x38 × +0x244 + 0.001)`, the frame step times the steps of a 60 fps frame (set each update, LS's `host/oot_high_fps.h`), tau and damping (slot 18) = `+0x234 × (+0x4c)²` and `+0x23c`. The static reading saw this under the DF's dirty bits (`+0x1c`). Hooked by `patch_solver_steps`: the step count is rounded up, at least 1 | read |
 | `f_803749e0` | `DF_PreImplPhase3` | Hot rank 171. Steps the current world: `f_80372000` on `[DF+0xc8]` (world 0) or `[DF+0xd0]` (world 1) with `s0 = DF+0x24`, the context, and the post-update job (`+0x4a0`), which is made to wait on the step's jobs. Before that, `f_803799c0` (rank 282, "next_center_of_mass_local"); for world 0 with phase-mask bit 0 it also steps `[DF+0x198]` with the same step (`f_803776c0`) | read |
 | `f_80380a20` | `DF_PostImplPhase1` | Hot rank 3013. Calls `f_8038086c` on the hknpWorld (what it does was not traced), then makes the frame's post-step jobs ("phive::JP::AfterUpdateWorldPostImplExtCallPhase1_"), among them a delegate job (vtable `0x84c56878`, at 0x80380d00) that runs the async-query drain `f_806d4620`, pushes more Havok tasks (`f_80372400`, at 0x80380f28), and copies the step and its inverse (`+0x24`, `+0x28`) to the previous pair (`+0x2c`, `+0x30`) | read |
 | `f_838d0080` | `DF_UpdateSingleThreaded(df, w1)` | DF slot 5: the whole update on the calling thread: `phive::CharacterController::update` (`f_838ceb80`), the world step (`f_838cf0b0`), then `f_838cf1f0` | read |
-| `f_838ceb80` | `DF_CharacterControllerUpdate` | "phive::CharacterController::update": the single-threaded path's pre-step. Applies the solver settings like `f_838cfc10` (also storing the substeps at the wrapper's `+0x2c8`), then the controllers' update; calls `f_838d5730` with the step (`+0x24`) and the frame step (`+0x38`) | read |
+| `f_838ceb80` | `DF_CharacterControllerUpdate` | "phive::CharacterController::update": the single-threaded path's pre-step. Applies the solver settings like `f_838cfc10` (also storing the substeps at the wrapper's `+0x2c8`), then the controllers' update; calls `f_838d5730` with the step (`+0x24`) and the frame step (`+0x38`). Hooked by `patch_solver_steps` | read |
 | `f_838cf1f0` | `DF_CharacterControllerResult` | "phive::CharacterController::result": the single-threaded path's post-step: drains the four async queues (the same calls as `f_806d4620`), the water managers' post-update (`phive::InteractiveWaterMgr::postUpdateWorld`, `phive::ResponsiveWaterMgr::postUpdateWorld`) | read |
 | `f_838cf0b0` | `DF_UpdateWorldSingleThreaded` | The single-threaded path: `f_83a445a0` on the current world with `s0 = DF+0x24` | read |
 | `f_83a445a0` | `PhiveWorld_StepSingleThreaded` | Calls Havok's own `hknpWorld::stepCollide` (`f_817f1d68`) and `stepSolve` (`f_817f6f80`) with a task queue, around the game's collide and solve task builders | read |
@@ -286,7 +286,7 @@ links to.
 | `+0x20`, `+0x24` | The step, 1/60 (`f_83b89110`); `+0x24` is what each frame's step uses | read |
 | `+0x28` | 1 / step | read |
 | `+0x2c`, `+0x30` | The previous step and its inverse, copied from `+0x24`/`+0x28` each frame | read |
-| `+0x38` | The frame step, in 60 fps frames (0.5 at 120 fps): substeps = `(int)(+0x38 × +0x244 + 0.001)` (Longshot's `host/oot_high_fps.h`) | read |
+| `+0x38` | The frame step, in 60 fps frames (0.5 at 120 fps): substeps = `(int)(+0x38 × +0x244 + 0.001)` (LS's `host/oot_high_fps.h`) | read |
 | `+0x4c` | Tau's scale (1.0), squared | read |
 | `+0x58` | A time scale (1.0): the step input's second value is step × it when it is not 1. No writer found | read |
 | `+0x64`, `+0x6c` | The phase mask and the world index of the update under way | read |
@@ -294,7 +294,7 @@ links to.
 | `+0xc8`, `+0xd0` | World 0 and world 1 (the wrappers) | read |
 | `+0x1a0` | Bit 0: step as one job, single-threaded | read |
 | `+0x234`, `+0x23c` | Tau and damping, 0.6 each | read |
-| `+0x244` | Solver steps of a 60 fps frame (an int): 4 at construction; 8 where Longshot's header saw it | read |
+| `+0x244` | Solver steps of a 60 fps frame (an int): 4 at construction; 8 where LS's header saw it | read |
 | `+0x2a8` to `+0x450` | The seven phase jobs' delegates and names | read |
 | `+0x460`, `+0x468` | The job pool and context the frame's jobs go into | read |
 | `+0x478` to `+0x4b8` | The seven pushed job records | read |
@@ -382,10 +382,10 @@ dependencies at `+60`, linked with compare-and-swap. **read**
 - **The frame time comes in through the step count.** Each update the solver's count is set to
   `(int)(frame step × the steps of a 60 fps frame + 0.001)` (`DF+0x38` the frame step, `DF+0x244` the steps;
   `f_838ceb80`, `f_838cfc10`). The count decides how far the world moves in a frame: cut short by the rounding down
-  (8 × 0.49 is 3 at 120 fps), a moving platform slid out from under Link (issue 1798). Longshot rounds it up while the
-  step is under 1, at least 1 and never under the game's (`hos_oot_solver_steps`, Longshot's `host/oot_high_fps.h`, which has the
+  (8 × 0.49 is 3 at 120 fps), a moving platform slid out from under Link (issue 1798). LS rounds it up while the
+  step is under 1, at least 1 and never under the game's (`hos_oot_solver_steps`, LS's `host/oot_high_fps.h`, which has the
   logic). **read** (from that header; the static reading had taken `DF+0x38` for a constant 1.0)
-- **Above 240 fps** the game's own count would be 0 with 4 steps a frame; Longshot's rounding keeps it at 1. **read**
+- **Above 240 fps** the game's own count would be 0 with 4 steps a frame; LS's rounding keeps it at 1. **read**
 - **The step input's second value** is the step times `DF+0x58` when that is not 1, else 0; Havok's solver info keeps
   the larger of it and the step (`+0x78`). It is 0 here. **read**
 - **Cloth** takes the actor update's step, so it follows the frame time: a batch's instances step by it times their

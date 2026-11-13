@@ -1,18 +1,18 @@
 # Textures: streaming and residency
 
-How the game makes, fills and lets go of its textures, how the terrain streams its tiles, and what Longshot's Vulkan
+How the game makes, fills and lets go of its textures, how the terrain streams its tiles, and what LS's Vulkan
 renderer does with all of it: when a texture becomes a Vulkan image, where its texels come from, what the texture budget
 evicts, and what can come back wrong. Written for the ground textures that garbled after a while of play and came back after
 a restart (issues 107, 386, 993, 1717): fixed by #2545 (merged 11 November 2026, waiting for a release), with one case
 left open, a card at the texture budget's limit. Looked at in November 2026.
 
-**Longshot code:** [gpu/vk/vk_texture.cpp](../../gpu/vk/vk_texture.cpp) (`texture_get`, `texture_touch`, `texture_frame`:
-the budget and eviction), [gpu/vk/vk_memory.cpp](../../gpu/vk/vk_memory.cpp) (which guest pages changed),
-[host/nvn_native.c](../../host/nvn_native.c) (memory pools, textures, `MapVirtual`), [gpu/vk/vk_vma.cpp](../../gpu/vk/vk_vma.cpp)
+**LS code:** `gpu/vk/vk_texture.cpp` (`texture_get`, `texture_touch`, `texture_frame`:
+the budget and eviction), `gpu/vk/vk_memory.cpp` (which guest pages changed),
+`host/nvn_native.c` (memory pools, textures, `MapVirtual`), `gpu/vk/vk_vma.cpp`
 (the driver's allowance)
 **See also:** [graphics.md](graphics.md) (the render-target pool), [maps.md](maps.md) (how a map loads),
-[culling.md](culling.md), [../texture-staging-publication.md](../texture-staging-publication.md),
-[../ui-texture-upload.md](../ui-texture-upload.md)
+[culling.md](culling.md), `docs/texture-staging-publication.md`,
+`docs/ui-texture-upload.md`
 
 ## In short
 
@@ -25,7 +25,7 @@ the budget and eviction), [gpu/vk/vk_memory.cpp](../../gpu/vk/vk_memory.cpp) (wh
    (`tera::temp_for_compressed`). As it leaves range the game finalizes them; when it comes back the game makes a texture
    over the same storage again and samples it **without drawing it again**, because on the console the texels are still in
    that memory. **read** (the renderer's notes on issues 107 and 386 saw the same: the tiles' 260 x 260 RG8 normal maps)
-3. **Longshot kept the GPU's texels only in the Vulkan image.** The renderer makes images lazily, when a draw first
+3. **LS kept the GPU's texels only in the Vulkan image.** The renderer makes images lazily, when a draw first
    samples or draws into a texture, and fills them from the game's memory; a texture the GPU drew never reached that
    memory. That broke the terrain twice: the game **moves a chunk's tiles to another block with a CPU copy of their
    memory**, and that copy was all zero (issue 1717); and a drawn tile evicted and made again came back empty (issues
@@ -82,7 +82,7 @@ with its own settings: `TexatureHandleNum` (sic), `TextureCompactionJobNum`, `Te
 
 - **It compacts its memory.** A task named "aglTextureDataMgr::Compaction" moves texture data to close the gaps left by
   textures it let go, with `memcpy` on the CPU, in time slices under a reader-writer lock (it checks the clock and yields
-  between them). Under Longshot those copies are ordinary CPU writes, so a moved texture is simply uploaded again from its
+  between them). Under LS those copies are ordinary CPU writes, so a moved texture is simply uploaded again from its
   new place: correct, at the cost of uploads while the compaction runs (a possible source of small hitches). **read**
 - **A script node clears it:** `SeqOneShotClearTextureCacheAll` empties the cache's list under its lock. Which flows call
   it (the title, a map change) is not known. **read**
@@ -101,7 +101,7 @@ with its own settings: `TexatureHandleNum` (sic), `TextureCompactionJobNum`, `Te
 |---|---|---|---|
 | `0x84ea17e8` | `g_TextureDataMgr` | The texture cache (agl::TextureDataMgr) | read |
 
-## What Longshot does
+## What LS does
 
 Read from the code at `main` 51da0464 (November 2026); the function names are in `gpu/vk/vk_texture.cpp` unless said.
 

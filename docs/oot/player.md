@@ -3,8 +3,8 @@
 Link's character controller and its speed, the write that takes his health, his movement update, and the pouch (the items he
 carries). Looked at for the Debug tab's rows: movement speed, protected hearts, flight, and adding and removing items.
 
-**Longshot code:** [nx2/oot_patches.py](../../nx2/oot_patches.py) (`patch_cct_speed`, `patch_life`, `patch_movement`,
-`patch_flight_rotation`), [host/hos_main.c](../../host/hos_main.c) (`hos_oot_cct_speed`, the flight, the pouch calls)
+**LS code:** `nx2/oot_patches.py` (`patch_cct_speed`, `patch_life`, `patch_movement`,
+`patch_flight_rotation`), `host/hos_main.c` (`hos_oot_cct_speed`, the flight, the pouch calls)
 **See also:** [camera.md](camera.md), [events.md](events.md) (the teleport), [game-data.md](game-data.md)
 
 ## Movement speed

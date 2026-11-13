@@ -8,9 +8,9 @@ ends, what runs each frame and on which threads, where the GPU does the particle
 the binary (no builds, no runs), because [hot-path.md](hot-path.md) found effects in 11 of the 200 hottest functions with
 no page to explain them. Hot ranks are positions in `hot_order.txt` ([hot-path.md](hot-path.md)).
 
-**Longshot code:** none yet. Longshot does nothing for effects in particular. Its renderer replays their compute dispatches
+**LS code:** none yet. LS does nothing for effects in particular. Its renderer replays their compute dispatches
 and instanced draws like any other, and the DLSS motion path treats particles as moving with the camera
-([gpu/vk/vk_temporal.cpp](../../gpu/vk/vk_temporal.cpp)).
+(`gpu/vk/vk_temporal.cpp`).
 **See also:** [hot-path.md](hot-path.md) (the ranks), [jobs.md](jobs.md) (stage 0's fork and the module calc jobs),
 [drawing.md](drawing.md) (the slot jobs' work bits, the passes' recording, `Model(XluIndirectPtcl)`),
 [rendering.md](rendering.md) (the passes, `CreateOccludedEffect`), [frame-time.md](frame-time.md) (the frame step),

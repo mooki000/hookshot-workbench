@@ -8,8 +8,8 @@ thread waits in the module phase (22–23% of those instants). This page reads w
 frame waits for it, and how it could be spread or thinned. [physics.md](physics.md) has Havok in general and the rows for
 the navigation step `f_80781ae0` and several Havok AI functions; this page links to them rather than repeating them.
 
-**Longshot code:** none yet. The virtual cores the navigation workers share with the job pools are
-[host/hos_thread.c](../../host/hos_thread.c).
+**LS code:** none yet. The virtual cores the navigation workers share with the job pools are
+`host/hos_thread.c`.
 **See also:** [jobs.md](jobs.md) (the pools, `JobGraph_Start`, `EntryJobsBgGraphics`, the measurements),
 [physics.md](physics.md) (the Havok rows, `HkTaskJob`, `PhiveHkTask_Wrap`), [ai.md](ai.md) (the AI graphs that ask for
 paths), [actors.md](actors.md) (the components, the Actor module's calc), [hot-path.md](hot-path.md) (the ranks),
@@ -208,8 +208,8 @@ A character's `+0xe0` is its boundary gatherer (null when the actor's IsEnableBo
    read back by the next frame's task (`f_83a06120` gets the "CA idle" flag). **read** (the start, the flag), **guess**
    (the read-back)
 
-Longshot's job-thread pinning: the CA worker is on core 1 with `BaseProcExecutor1` and `ModuleSystemWorker1`
-([jobs.md](jobs.md), *Pinning*), at priority 22 against the executors' 16. Under Longshot's virtual cores a better
+LS's job-thread pinning: the CA worker is on core 1 with `BaseProcExecutor1` and `ModuleSystemWorker1`
+([jobs.md](jobs.md), *Pinning*), at priority 22 against the executors' 16. Under LS's virtual cores a better
 waiter asks the holder to give its core up at its next checkpoint (an nn::os call, an SVC or a loop header,
 `hos_thread.c`), so a long Havok loop on core 1 can hold back core-1 work for up to that checkpoint. **read** (the
 masks and priorities, the host's rule), **guess** (how much it costs)

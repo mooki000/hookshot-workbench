@@ -4,12 +4,12 @@ What the game does on the CPU to turn its scene into NVN commands: who drives th
 command buffers and how they are submitted, how models become draw items and are split into batches, and what one
 draw costs (material, uniform, texture and state binds, and the draw call). The frame rate is CPU-bound, and this is the
 part of the game's CPU time nothing else documents. Looked at in November 2026 by static analysis of the binary and of
-Longshot's code (no builds, no runs). Hot ranks are positions in `hot_order.txt` ([hot-path.md](hot-path.md)).
+LS's code (no builds, no runs). Hot ranks are positions in `hot_order.txt` ([hot-path.md](hot-path.md)).
 
-**Longshot code:** [host/nvn_native.c](../../host/nvn_native.c) (every NVN call below lands in a handler there:
-[nvn-calls.md](nvn-calls.md)), [gpu/vk/vk_replay.cpp](../../gpu/vk/vk_replay.cpp) (the replay a submit starts),
-[host/hos_thread.c](../../host/hos_thread.c) (`YieldThread`, which the recording threads call after each batch)
-**See also:** [nvn-calls.md](nvn-calls.md) (the NVN functions and what each costs under Longshot), [jobs.md](jobs.md)
+**LS code:** `host/nvn_native.c` (every NVN call below lands in a handler there:
+[nvn-calls.md](nvn-calls.md)), `gpu/vk/vk_replay.cpp` (the replay a submit starts),
+`host/hos_thread.c` (`YieldThread`, which the recording threads call after each batch)
+**See also:** [nvn-calls.md](nvn-calls.md) (the NVN functions and what each costs under LS), [jobs.md](jobs.md)
 (the threads and the stage slot jobs), [culling.md](culling.md) (the occlusion queries and conditional draws inside the
 draw loops), [rendering.md](rendering.md) (the passes on the GPU), [hot-path.md](hot-path.md) (the ranks)
 
@@ -93,7 +93,7 @@ capacity, list; one per frame, by the byte at `+0x2a8`) from `+0x40`. `f_80527f0
 puts the pending command buffers in their recorded order and submits them in one `QueueSubmitCommands`, then `QueueFlush`. Its callers are `PostDraw(TV)` and
 `f_80527e90`, the game's own `QueueSubmitCommands`, which first flushes what is pending. **read**
 
-Under Longshot a submit replays its command buffers on the submitting thread ([nvn-calls.md](nvn-calls.md)). So the
+Under LS a submit replays its command buffers on the submitting thread ([nvn-calls.md](nvn-calls.md)). So the
 command buffers that the bit-10 path submits at once are replayed on whichever worker recorded them, and the rest on
 the thread that flushes (the main thread, from `PostDraw(TV)`). **read** (the code paths), **guess** (how often each runs)
 
@@ -201,7 +201,7 @@ they are)
 
 ### What one draw costs in NVN calls
 
-Read from the code above. Each NVN call is a host call under Longshot ([nvn-calls.md](nvn-calls.md)).
+Read from the code above. Each NVN call is a host call under LS ([nvn-calls.md](nvn-calls.md)).
 
 | Case | NVN calls | Sure |
 |---|---|---|
@@ -346,26 +346,26 @@ Read from the code above. Each NVN call is a host call under Longshot ([nvn-call
 
 ## Notes
 
-### What Longshot makes expensive here
+### What LS makes expensive here
 
 - **Batches.** Each batch's `Initialize` and `Finalize` take a lock in the host, and its `EndRecording` copies the whole
   recording ([nvn-calls.md](nvn-calls.md)). The game makes one command buffer per chunk of every pass's list, so the
   smaller the chunks, the more of these. **read** (the code), **guess** (how many a frame)
 - **Re-binding at every batch.** A fresh draw context per batch means the first draw of each batch binds its render
-  state (about 35 calls), program, blocks and textures again. Under Longshot each is a record now and a replay step at
+  state (about 35 calls), program, blocks and textures again. Under LS each is a record now and a replay step at
   the submit. **read**
 - **Recorded commands are copied.** `CallCommands` on a shape's recorded commands is a jump on the console. Under
-  Longshot it copies the recording into the batch, under a shared lock, every time the shape is drawn
+  LS it copies the recording into the batch, under a shared lock, every time the shape is drawn
   (`inline_recording`, host/nvn_native.c). Shapes with recorded commands are the cheapest draws for the game and not
   for the host. **read**
 - **A yield after every batch.** The bit-10 loop calls `nn::os::YieldThread` after each batch. The host answers it by
   giving up the virtual core (`hos_vcore_yield`) and calling `SwitchToThread` (host/hos_thread.c). **read** What that
   costs per frame was not measured.
 - **Submits on the recording threads.** Batches for queues 3 and 5 are submitted by the worker that recorded them, and
-  a submit replays on its caller under Longshot. So part of the replay may run on the job threads during the module
+  a submit replays on its caller under LS. So part of the replay may run on the job threads during the module
   phase, on the critical path. **guess**
 - **The inline path.** About 1,800 per-draw places would write commands directly on the console and call NVN under
-  Longshot instead ([nvn-calls.md](nvn-calls.md)). In this page's loops, those are the uniform binds, the queries and
+  LS instead ([nvn-calls.md](nvn-calls.md)). In this page's loops, those are the uniform binds, the queries and
   the conditions. **read** (there)
 
 ### Rows elsewhere
@@ -385,7 +385,7 @@ optional fence wait. `f_8008f840`, `f_8002a5f0`, `f_80527f00` and `f_80527e90` h
 - Whether the slot jobs record frame N's draws while the main thread's `Draw(TV)` handles frame N or N−1. The draw
   records are buffered per frame (0x53d8 bytes each), which suggests a pipeline.
 - What `f_8009bb80` (rank 8) writes, and how often it invalidates mapped ranges in play: each invalidate gives up the
-  virtual core under Longshot.
+  virtual core under LS.
 - Whether the per-model matrices are a uniform block that `f_8008fc00` re-binds for every model.
 - The bits of the loop mode other than 5 and 7, and the 30 draw types' factors.
 - The other slot work (bits 0, 1, 2, 5, 6, 8, 12) and `f_800766e0`, `f_8007c120`, `f_8007e200`, `f_800738e0`.

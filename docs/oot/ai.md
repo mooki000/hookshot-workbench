@@ -7,7 +7,7 @@ was looked at in November 2026 by static analysis of the binary, for the frame-r
 frame bound by the game's logic, and [hot-path.md](hot-path.md) found AI and NPC code among the hottest functions.
 [sequences.md](sequences.md) has the node classes, their registry and vtable; this page builds on it.
 
-**Longshot code:** none yet
+**LS code:** none yet
 **See also:** [sequences.md](sequences.md) (node classes, vtable slots, parameter binding), [actors.md](actors.md) (the
 actor class, its five jobs, LODParam and calc skip), [animation.md](animation.md) (slot 51, the LOD module, calc
 skipping by whole frames), [jobs.md](jobs.md) (the thread pools, AIGroupParallelCalc), [physics.md](physics.md) (Havok
@@ -238,7 +238,7 @@ step reaches the nodes (*In short*, 2), and `SeqExecuteGenericWaitFrame` adds th
 The nodes whose names count frames (`ExecuteAIScheduleIsOverCurrentPointWaitFrame`, `SelectorGenericFrameCounter`,
 `ExecuteGenericCounter`, `QueryAIScheduleGetTakeOffHeightAndFrame`, the parameters `AttackIntervalFrames`,
 `MoveIntervalFrame`, `FallIntervalFrame`, `IntervalFrame`) were not checked one by one. The worklist's jump animation
-that keeps playing in dialogue above 60 ([../worklist.md](../worklist.md), #1742) is the kind of bug such a counter
+that keeps playing in dialogue above 60 (`docs/worklist.md`, #1742) is the kind of bug such a counter
 would cause; nothing here ties it to one. **guess**
 
 ### What costs

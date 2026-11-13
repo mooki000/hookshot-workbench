@@ -3,8 +3,8 @@
 The player camera's update, where its yaw and pitch are and what turns them, how it follows Link by itself, and the gameplay
 view's matrix. Looked at for the native mouse look, the option to stop the camera centring itself, and the free camera.
 
-**Longshot code:** [host/mouse_native.c](../../host/mouse_native.c), [nx2/oot_patches.py](../../nx2/oot_patches.py)
-(`patch_mouse_camera`, `patch_camera_centering`, `patch_view`), [host/hos_main.c](../../host/hos_main.c) (`hos_oot_free_view`)
+**LS code:** `host/mouse_native.c`, `nx2/oot_patches.py`
+(`patch_mouse_camera`, `patch_camera_centering`, `patch_view`), `host/hos_main.c` (`hos_oot_free_view`)
 **See also:** [player.md](player.md)
 
 ## Functions

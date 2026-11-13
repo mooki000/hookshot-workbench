@@ -4,14 +4,14 @@ How the game reads its controllers and turns them into actions: the `nn::hid` fu
 manager (sead's, with a device for the Npads and one for a keyboard and mouse), the controllers that turn a pad's state into
 buttons and sticks, the motion addon the aim reads, the player's virtual keys, and the two paths rumble takes. Looked at in
 November 2026 by static analysis of the binary only (no run in the game), to set down what the game asks of `nn::hid` and
-how Longshot answers.
+how LS answers.
 
-**Longshot code:** [host/nn_hid.c](../../host/nn_hid.c) (the HID functions: the Npad, six-axis, vibration, touch screen),
-[host/pad_sdl.c](../../host/pad_sdl.c) (the controllers through SDL, motion and rumble), [host/hos_motion.h](../../host/hos_motion.h)
-(the six-axis state), [host/hd_rumble.h](../../host/hd_rumble.h) (HD rumble), [host/mouse_native.c](../../host/mouse_native.c)
-(native mouse look), [host/oot_menu.c](../../host/oot_menu.c) (the menu mouse), [host/display.c](../../host/display.c) (the
-mouse's capture), [nx2/standalone.py](../../nx2/standalone.py) (the stubs for the `nn::hid` functions the host does not
-define), [nx2/oot_patches.py](../../nx2/oot_patches.py) (`patch_mouse_camera`, `patch_menu_focus`, `patch_menu_tick`)
+**LS code:** `host/nn_hid.c` (the HID functions: the Npad, six-axis, vibration, touch screen),
+`host/pad_sdl.c` (the controllers through SDL, motion and rumble), `host/hos_motion.h`
+(the six-axis state), `host/hd_rumble.h` (HD rumble), `host/mouse_native.c`
+(native mouse look), `host/oot_menu.c` (the menu mouse), `host/display.c` (the
+mouse's capture), `nx2/standalone.py` (the stubs for the `nn::hid` functions the host does not
+define), `nx2/oot_patches.py` (`patch_mouse_camera`, `patch_menu_focus`, `patch_menu_tick`)
 **See also:** [camera.md](camera.md) (the stick's turns and the mouse's), [menus.md](menus.md) (the menu mouse),
 [frame-time.md](frame-time.md) (the global step the hold timers advance by), [player.md](player.md),
 [game-data.md](game-data.md) (`IsLastSelectedMQMode`), [jobs.md](jobs.md) (the calc tree)
@@ -34,18 +34,18 @@ define), [nx2/oot_patches.py](../../nx2/oot_patches.py) (`patch_mouse_camera`, `
    Quest, as on the 3DS. **guess**
 6. **Rumble takes two paths.** The rumble module plays `.bnvib` files (`Rumble/Common.bnvib.sarc`) through the SDK's vibration
    node graph on its own timer thread (`rmbl::VibrationThread`); the Npad device has a `VibrationThread` of its own that sends
-   queued values with `SendVibrationValue`. Longshot answers both at the `nn::hid` boundary. **read**
+   queued values with `SendVibrationValue`. LS answers both at the `nn::hid` boundary. **read**
 
 ## What the game asks of nn::hid
 
 The main module imports 61 `nn::hid` symbols (62 import slots; the stubs are at 0x83c61f80 to 0x83c64810), one of them
-data (`VibrationNode::DefaultVibrationSampleInterval`). A free function of `nn::hid` that Longshot defines (`HLE(...)` in [host/nn_hid.c](../../host/nn_hid.c)) replaces the SDK's; one it does not
-define gets a generated stub that logs its first call and returns 0 ([nx2/standalone.py](../../nx2/standalone.py)). The
+data (`VibrationNode::DefaultVibrationSampleInterval`). A free function of `nn::hid` that LS defines (`HLE(...)` in `host/nn_hid.c`) replaces the SDK's; one it does not
+define gets a generated stub that logs its first call and returns 0 (`nx2/standalone.py`). The
 vibration classes (`VibrationPlayer`, `VibrationMixer`, `VibrationWriter`, `VibrationTarget`, `VibrationNode`) and
 `ControllerSupportArg::SetDefault` are class members: they run as lifted SDK code, which calls `nn::hid::detail` functions
 that the host does define.
 
-| Import | Where the game calls it | What Longshot answers |
+| Import | Where the game calls it | What LS answers |
 |---|---|---|
 | `InitializeNpad`, `SetSupportedNpadIdType`, `SetSupportedNpadStyleSet` | The Npad device's constructor (`f_80ed67c0`: ids No.1 to No.8 and Handheld, styles 0x1f: FullKey, Handheld, JoyDual, JoyLeft, JoyRight); the controller module's setup (`f_83b44500`); the style script node (`f_81000d20`) | Nothing to do |
 | `GetNpadStyleSet` | The Npad device's calc, for each of the nine ids | FullKey (1) for No.1, 0 for the rest |
@@ -53,7 +53,7 @@ that the host does define.
 | `GetSixAxisSensorHandles` | The Npad device's calc, on a style change: 2 asked for | Writes the handles asked for and says 3 (the comment there: the aim's motion path) |
 | `StartSixAxisSensor` | On a style change, each handle | Nothing to do |
 | `SetGyroscopeZeroDriftMode` | On a style change, only when the device's `+0x8782` is not 0 | Stub (0) |
-| `GetSixAxisSensorStates` | The Npad device's calc, 16 a sensor, while `+0x8781` is set | The pad's motion through SDL ([host/hos_motion.h](../../host/hos_motion.h)), or a pad lying still |
+| `GetSixAxisSensorStates` | The Npad device's calc, 16 a sensor, while `+0x8781` is set | The pad's motion through SDL (`host/hos_motion.h`), or a pad lying still |
 | `GetVibrationDeviceHandles`, `InitializeVibrationDevice` | On a style change | Two handles (left, right) |
 | `SendVibrationValue` | The Npad device's `VibrationThread` (`f_83489ad0`) | To the pad's motors, or as HD rumble to a Switch controller (`vibration_send`) |
 | `IsOunceVibrationDeviceMounted` | `f_830502a0` | Stub (0: not mounted) |
@@ -66,7 +66,7 @@ that the host does define.
 | `GetMouseStates`, `GetKeyboardState` | The keyboard and mouse device's calc (`f_83b48780`) | Stubs (0): no states, and the buffers are not written (see *Notes*) |
 | The vibration classes | The rumble module and its thread (`f_80c79650`, `f_83a68ff0`) | Lifted; their `nn::hid::detail` calls (`SendVibrationValue(s)`, `EnqueueVibrationValue`, `GetVibrationDeviceInfo`, the permit calls) are the host's |
 
-The game does not import `GetTouchScreenStates`, the debug pad or the gesture functions. Longshot's touch-screen answer
+The game does not import `GetTouchScreenStates`, the debug pad or the gesture functions. LS's touch-screen answer
 (no touches) is for other games.
 
 ## The manager and the devices
@@ -239,7 +239,7 @@ last style and `+0x180` the last sampling number seen. A merged controller has i
   calc, by `GetNpadStates`. The manager is a sead calc task, so the calc likely runs in the framework's calc tree on the main
   thread ([jobs.md](jobs.md)); where it sits against the module phase was not traced. **guess** Rumble runs on its own
   threads: "rmbl::VibrationThread" on a timer, and the Npad device's "VibrationThread" on core mask 2. **read**
-- **What Longshot gives the game.** One Pro Controller on No.1, whatever the player uses, so record 0 with style FullKey
+- **What LS gives the game.** One Pro Controller on No.1, whatever the player uses, so record 0 with style FullKey
   is the only one the game sees. The buttons and sticks are the sum of every pad (SDL, or XInput when SDL has none), the
   keyboard, the mouse (as the right stick, or nothing when native mouse look takes it), `HOS_INPUT_SCRIPT` and
   `HOS_INPUT_LIVE`, and the menu mouse's taps and sticks (`hos_hid_tap`, `hos_hid_stick`, `hos_hid_drag`). Each call
@@ -247,12 +247,12 @@ last style and `+0x180` the last sampling number seen. A merged controller has i
 - **Native mouse look** turns the player camera's yaw and pitch in `f_80644c80` before the camera reads its input
   ([camera.md](camera.md)); the stick path above is left alone while it does. The menu mouse works through the Npad (taps
   and sticks) and the menu focus ([menus.md](menus.md)).
-- **The keyboard and mouse device reads stale memory under Longshot.** `GetMouseStates` and `GetKeyboardState` are
+- **The keyboard and mouse device reads stale memory under LS.** `GetMouseStates` and `GetKeyboardState` are
   generated stubs: they return 0 and write nothing. `f_83b48780` still reads the newest mouse state's attribute byte and,
   when its bit 0 is clear, the keyboard state's key bits and the pointer, all from its own stack buffers, which nothing has
   written. Its key bits may then follow whatever was on the stack. Nothing traced here reads this device; whether anything
   does is open. **read**
-- **The six-axis count.** The device keeps whatever count `GetSixAxisSensorHandles` returns: Longshot's 3 makes its calc read
+- **The six-axis count.** The device keeps whatever count `GetSixAxisSensorHandles` returns: LS's 3 makes its calc read
   the first sensor twice (the third read goes into the first buffer), and the motion addon then reads the first sensor,
   where a count of exactly 2 would make it pick one with `+0x534`. Where a count of 3 matters for the aim, as the host's
   comment says, was not found. **read**

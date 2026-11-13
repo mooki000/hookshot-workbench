@@ -1,10 +1,10 @@
 # Master Quest
 
 How the game decides it owns the Master Quest add-on, how the title and the new-game flow use the answer, what Master Quest
-mode changes, and where its saves go. It is written for a future `nn::aoc` in Longshot: which calls the game makes, what it
+mode changes, and where its saves go. It is written for a future `nn::aoc` in LS: which calls the game makes, what it
 does with the answers, and what it asks for once the add-on is reported. Looked at in November 2026.
 
-**Longshot code:** none yet
+**LS code:** none yet
 **See also:** [game-data.md](game-data.md) (`account.sav`, `IsLastSelectedMQMode`), [save-data.md](save-data.md) (the
 slots and captions), [events.md](events.md) (`f_829df380`, the change of map)
 
@@ -19,7 +19,7 @@ slots and captions), [events.md](events.md) (`f_829df380`, the change of map)
    `_MQ` layout. No geometry, collision or navigation loader looks at the mode. The saves go to slots 6 to 11. **read**
    (see [maps.md](maps.md) for how a map loads)
 4. **The ".120" resources** are asked for when the add-on is owned and the release version is at least 120. **read**
-5. **Longshot today:** the two `nn::aoc` calls are unimplemented and return 0, so the byte stays 0 and the title never
+5. **LS today:** the two `nn::aoc` calls are unimplemented and return 0, so the byte stays 0 and the title never
    offers Master Quest. **tested** (the log)
 
 ## Functions
@@ -182,10 +182,10 @@ The compressed data, searched too: **tested**
 So the title has no Master Quest button in this data: the choice is most likely the NewGameMQ window that
 `ConfirmationNewGame` opens from its IsMQ input. **guess** (the graphs' wiring was not parsed)
 
-### Why Longshot never offers it
+### Why LS never offers it
 
-Longshot doesn't implement `nn::aoc`. Unimplemented imports go to `a64_unimplemented`
-([a64_rt.c](../../third_party/a64-kit/rt/a64_rt.c)), which logs the import once and returns 0 in `x0`. The log shows the
+LS doesn't implement `nn::aoc`. Unimplemented imports go to `a64_unimplemented`
+(`third_party/a64-kit/rt/a64_rt.c`), which logs the import once and returns 0 in `x0`. The log shows the
 boot check: `unimplemented import _ZN2nn3aoc17CountAddOnContentEv (lr 0x83392a38)`. A count of 0 skips the list call,
 `+216` stays 0, and `SeqOneShotSetMQMode` refuses Master Quest mode. **tested** (the log), **read** (the rest)
 
@@ -205,7 +205,7 @@ boot check: `unimplemented import _ZN2nn3aoc17CountAddOnContentEv (lr 0x83392a38
   tables. **read** (the parse), **tested** (the file)
 - **Only for owners:** report add-on 1 only when the player's own add-on dump is found (as emulators do). The
   development-version path in `f_8331a710` and the null-holder path in `f_83305480` are the game's own and are not routes
-  for Longshot to use. Making the check pass for everyone would unlock paid content without a licence, and Longshot doesn't
+  for LS to use. Making the check pass for everyone would unlock paid content without a licence, and LS doesn't
   do that.
 
 ### Is it extra data or only a licence?

@@ -4,8 +4,8 @@ How the game steps its frames: the frame step and the game clock, the frame limi
 examined for a frame-rate cap above 60 (issue #1742). Above a cap of 60 the game's frame step is the frame's own time (0.42 at
 144 fps), so a site that cuts the step to whole frames or counts updates goes wrong there.
 
-**Longshot code:** [nx2/oot_patches.py](../../nx2/oot_patches.py) (`patch_frame_seconds`, `patch_movie_frames`,
-`patch_whole_frames`), [host/nn_vi.c](../../host/nn_vi.c) (`hos_frame_seconds_bits`, `hos_movie_frames`, the frame limiter)
+**LS code:** `nx2/oot_patches.py` (`patch_frame_seconds`, `patch_movie_frames`,
+`patch_whole_frames`), `host/nn_vi.c` (`hos_frame_seconds_bits`, `hos_movie_frames`, the frame limiter)
 **See also:** [graphics.md](graphics.md)
 
 ## The step and the clock
@@ -37,8 +37,12 @@ back over a higher value written from outside before either divide runs.
 | Function | Name | What it does | Sure |
 |---|---|---|---|
 | `f_80a87e50` | `PickupCounter_Update` | The pickup counter above Link's head: moves the count it shows toward the new total by `(int)(step * …)`. Stalled above 60 (#1832, fixed in #2006). Hooked by `patch_whole_frames` | tested |
-| `f_803edf70` | `TimeOfDay_Update` | The time of day: adds `(int)(2 * step)` game seconds a frame (`+60`) to the seconds of the day (`+40`, mod 86400), then the day (`+44`). Stood still above 120 fps (the fix is PR #2093, open) | tested |
-| `f_800672e0` | `SubStepLoop` | A loop of `node+76` sub-steps times `(int)step`; skipped entirely above 60. What it drives is unknown (called from `f_80660320`) | read |
+| `f_803edf70` | `TimeOfDay_Update` | The time of day: adds `(int)(2 * step)` game seconds a frame (`+60`) to the seconds of the day (`+40`, mod 86400), then the day (`+44`). Cut, it added 1 a frame below 120 fps (the day slower: 83% at 100) and 0 above 120, where the clock stood still. Hooked by `patch_whole_frames` | tested |
+| `f_800672e0` | `WaterRipple_SubSteps` | The water renderer's ripple simulation: runs `(int)step` times the water's sub-steps (`pass+76`) each frame (called from `f_80660320`). Cut to 0 above 60 fps, the rings the player and the actors make in water stood still. Its remainder is kept per water object (`x21`). Hooked by `patch_whole_frames` | tested |
+| `f_832b32b0` | `ScarecrowSong_Playback` | Scarecrow's Song playback: the elapsed-frame counter at `obj+0x265fc` (`x19` here) advances the saved note delays by `(int)step`. Cut to 0 above 60 fps, the song waited on one note until a slow frame let the counter move. Hooked by `patch_whole_frames` | tested |
+| `f_832b6840` | `ScarecrowSong_Record` | The eight-note recording (mode 10): the same elapsed counter is reset between notes and gaps, then saved as their lengths. Cut to 0, the timing was lost though the eight pitches were recorded. At the cut `x9` holds the counter's address (`x0+0x265fc`: set from `x0+0x26000` plus 1532 on both ways into it, by falling through and from `0x832b6e00`; the store at `0x832b6dac` writes through it), so the three Scarecrow sites share one remainder. The other recording mode (13) cuts the same way with an `x12` addition and is left as the game's. Hooked by `patch_whole_frames` | tested |
+| `f_832b2690` | `ScarecrowSong_RecordEnd` | Recording completion: after the eighth note starts it times that note and writes its final delay into the same recording (`x19+0x265fc`). Its unsigned cut must carry the fraction too, or the eighth note is saved with zero length and not played. Hooked by `patch_whole_frames` | tested |
+| `f_80652cb0` | `FloorWeb_Simulate` | The floor web's simulation: `(int)step` steps a frame, clamped to 0..3. Cut to 0 above 60 fps, the web stayed rigid when the player landed on it, though it still held him. Its remainder is kept per web (`+2296`), before the clamp. Hooked by `patch_whole_frames` | tested |
 | `f_83be20b0` | `UnchangedTimeout` | A 300-update timeout on an unchanged value (would run fast above 60) | read |
 | `f_83c53620` | `ListEntryTimer` | A 180-update timer per list entry (would run fast above 60) | read |
 | `f_8057fd20` | `DirectionLookup` | An angle lookup that sorts nearby objects into 16 or 32 directions (fine) | read |
@@ -60,7 +64,7 @@ back over a higher value written from outside before either divide runs.
 ## Notes
 
 - More sites counted in frames, from the later pages (each runs proportionally more often in real time above 60 fps): the actors' calc-skip intervals (`(frame - phase) mod interval`, the frame at `[0x84eb0d90]+0x440`) and the LOD module's `mod N` / `mod 5` staggering ([animation.md](animation.md)); AI and NPC component work every 10, 30, 60 or 150 frames by BaseProc id, and AIGroupParallelCalc's every-N ([ai.md](ai.md)). **read**
-- The physics world's base step is the literal 1/60 s at 0x83b89578 (`DF+0x24`), and the frame step reaches the solver through its step count, set each update from it (`DF+0x38`); Longshot rounds the count up above 60 fps (issue 1798, `host/oot_high_fps.h`; [physics.md](physics.md)). **read** Cloth also follows the frame's step.
+- The physics world's base step is the literal 1/60 s at 0x83b89578 (`DF+0x24`), and the frame step reaches the solver through its step count, set each update from it (`DF+0x38`); LS rounds the count up above 60 fps (issue 1798, `host/oot_high_fps.h`; [physics.md](physics.md)). **read** Cloth also follows the frame's step.
 - `0x84d61fc8` (the global step) has one reader, `f_834a3680` ([physics.md](physics.md)'s scan). **read**
 
 - Above 60 fps, before the step hooks, every frame still stepped 1/60 s and the game ran fps / 60 times too fast.

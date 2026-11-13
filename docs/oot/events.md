@@ -3,7 +3,7 @@
 How code asks the game to play an event (a scripted sequence such as a change of map), and how the world's clock is set.
 Looked at for the debug tools' teleport and time of day.
 
-**Longshot code:** [host/hos_main.c](../../host/hos_main.c) (`oot_teleport`, `oot_event_arg`, `oot_set_time`)
+**LS code:** `host/hos_main.c` (`oot_teleport`, `oot_event_arg`, `oot_set_time`)
 **See also:** [game-data.md](game-data.md) (the flags the teleport checks first), [player.md](player.md)
 
 ## Requesting an event

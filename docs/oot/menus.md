@@ -4,7 +4,7 @@ The game's menu screens (the title and its lists, the pause menu, Key Items, Thr
 files' dialogs): how a screen updates, how a button gets the focus, and how the pause menu's pages and Key Items find their
 panes. Looked at for the menu mouse (point, click and scroll in the game's own menus).
 
-**Longshot code:** [host/oot_menu.c](../../host/oot_menu.c), [nx2/oot_patches.py](../../nx2/oot_patches.py)
+**LS code:** `host/oot_menu.c`, `nx2/oot_patches.py`
 (`patch_menu_focus`, `patch_menu_tick`)
 **See also:** [layout.md](layout.md) (finding panes and their positions)
 

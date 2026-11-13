@@ -4,16 +4,16 @@ The world manager (`WorldMgr`, the game's `wm::` code) and what it drives: the t
 weather, the wind and the clouds, the environment palettes that set the light, fog and sky for each hour and weather, and
 the parameter files they come from. Looked at in November 2026 by static analysis of the binary, to see how the game
 decides that the sun is visible and what it changes when the sun is hidden (the open question in
-[culling.md](culling.md) under *The sun*), and where the fog and exposure that Longshot's renderer has struggled with
+[culling.md](culling.md) under *The sun*), and where the fog and exposure that LS's renderer has struggled with
 are set.
 
-**Longshot code:** [host/hos_main.c](../../host/hos_main.c) (`oot_set_time`, the debug tools' time of day),
+**LS code:** `host/hos_main.c` (`oot_set_time`, the debug tools' time of day),
 the fog and exposure factors that were in `gpu/vk/vk_shader.cpp` (`oot_visual`) and
-`oot_visual_workaround.h` until Hookshot #2042 removed them, [gpu/vk/vk_replay.cpp](../../gpu/vk/vk_replay.cpp) (the samples-passed reports, which
-the sun's haze followed: PR #487), [gpu/vk/vk_memory.cpp](../../gpu/vk/vk_memory.cpp) (the exposure meter's readback page)
+`oot_visual_workaround.h` until HS #2042 removed them, `gpu/vk/vk_replay.cpp` (the samples-passed reports, which
+the sun's haze followed: PR #487), `gpu/vk/vk_memory.cpp` (the exposure meter's readback page)
 **See also:** [events.md](events.md) (`ExecuteWmSetTime` and the world manager's holder), [frame-time.md](frame-time.md)
 (`f_803edf70`, the time of day above 60 fps), [rendering.md](rendering.md) (the sky's tables, the froxel fog, the
-lighting composite), [culling.md](culling.md) (occlusion queries), [jobs.md](jobs.md), [../design.md](../design.md)
+lighting composite), [culling.md](culling.md) (occlusion queries), [jobs.md](jobs.md), `docs/design.md`
 
 ## In short
 
@@ -272,12 +272,12 @@ So the cost that culling.md fears (whatever the game does when the sun is hidden
 sun occlusion and the culling, if any; the sun model's visibility is not involved. With every report at 4096 nothing is
 culled, so the depth is complete and the GPU's own sun occlusion should be right. **guess**
 
-### Longshot
+### LS
 
 - `oot_set_time` calls `f_834722d0` directly with `hour * 3600`, as `ExecuteWmSetTime` would with `TimeMin` 0. It checks
   the clock (`world+0x510`) first. **read**
 - The time of day above 60 fps is `f_803edf70`'s cut to whole seconds ([frame-time.md](frame-time.md), PR #2093).
-- The fog and exposure factors: [../design.md](../design.md) says the OoT fog (0.25) and exposure (0.65) factors are
+- The fog and exposure factors: `docs/design.md` says the OoT fog (0.25) and exposure (0.65) factors are
   still needed, but `oot_visual` in `gpu/vk/vk_shader.cpp` is now off unless `RX_VK_OOT_VISUAL=1`, and its defaults are
   0.08 (`RX_VK_OOT_FOG`) and 1.0 (`RX_VK_OOT_EXPOSURE`). The fog it scales is the froxel fog's integration (a compute
   program; the volume fog of the palettes above), and the exposure is the final pass's (`c3+0x38`). The game sets its
@@ -308,4 +308,4 @@ further. **read** (the names)
   time of day.
 - Which of the weather's names goes with which value of `QueryWeather`.
 - Whether the sun's actor uses `QueryGenericIsVisibleByOcclusionQuery`, and whether its glare depends on it.
-- Which volume fog resolution (console or handheld) Longshot's game runs with.
+- Which volume fog resolution (console or handheld) LS's game runs with.
