@@ -5,8 +5,11 @@ The tools, test harness and agent skills I use to build, run, test and measure
 [LS](https://git.magicbean.dev/MagicBeanDev/Longshot) on Linux. I'm sharing them so other contributors can
 check and reuse the methods. This workbench is separate from both projects and is not endorsed by their maintainers.
 
-**No game files are here, and nothing made from them:** no dump, no saves, no built game, no data read out of the
-game's files. You need your own legally obtained game and your own LS or HS build.
+**No game files are here:** no dump, no saves, no built game, no assets and no code from the game. The one thing here
+that is about the game itself is `docs/oot/`, a map of what its functions do: addresses, working names and
+descriptions written by people who studied it; it quotes names the game itself uses (a class, a thread, a file) as
+identifiers (see `docs/oot/README.md`, "What may go here"). You need your own legally obtained game and your own LS or
+HS build.
 
 I work with coding agents (Claude, and GPT-6 Astra). The `skills/` are the instructions those agents follow on my machine, and most of
 the scripts were written by them under those rules, then run and checked here. The commits say so in their trailers.
