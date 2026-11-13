@@ -35,6 +35,13 @@ python3 $M/fnmap.py find BakeProbe         # a thread, class or job name from a 
   read that page's "In short" before concluding the map has nothing.
 - Read the whole row and the page's first paragraph before the lifted code. A row that says `Hooked by patch_x` tells
   you which function in `nx2/oot_*.py` changes it; the patch's own comment says what the patch does.
+- **No shell (a read-only worker)?** The tool is a convenience, not a requirement: every function is one line of one
+  page, so search the pages themselves for `f_<8 hex digits>` (or `0x<address>`, or the words) under
+  `docs/oot/*.md`. Read the line's whole row and its page's "In short".
+- **Also search the earlier investigations** before working anything out again: the reports folder (the one the
+  brief, `AGENT-BRIEF.md`, lives in; its `*.md` files) holds findings that never became rows (chests and item giving,
+  crashes, frame-rate sites). Search it for the address or the game's name for the thing. A report can be older than the map
+  and wrong where they differ; say which you used, and hand the report's still-true findings back as rows (section 4).
 
 ### When the map has nothing: reading the lifted code
 
@@ -45,6 +52,8 @@ commit you are asking about (the brief and `reports/LOG.md` name them; one of ma
 - A function starts at `void f_<address>(Ctx *__restrict A64_NOESC c) {` in exactly one file. The files are tens of
   megabytes: find the file first (`grep -l -m1 '^void f_803edf70(Ctx' $G/code_0*.c`), then read that one function.
   Searching many of these files in one call can silently miss matches; search one file at a time.
+- Which file holds an address is decided per build. Do not work it out from a `chunks.txt` or an image listing that
+  belongs to another build's work folder; search the files of the build you are reading.
 - Strings are not in the C: a thread or class name is loaded from the game image by address. To get from a name in a
   log to its function, find who references the string's address, or start from a neighbour the map already has.
 - Thread names are not unique: a pool's workers share one name (six `BaseProcCreateAndDeleteThread`, one

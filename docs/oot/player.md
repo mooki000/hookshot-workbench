@@ -38,6 +38,12 @@ its collisions.
 | `f_828d4a70` | `OneShotAddOrRemovePouchContent` | The event that adds or removes a pouch content by actor name (its parameters are read through pointers; the delta's sign picks add or remove). The status is the top bits of the result word | tested |
 | `f_82a3c260` | `QueryGetPouchContentNumByActorName` | The query of how many of a content the pouch holds, through `f_805b63e0` | read |
 | `f_805b63e0` | `Pouch_Count(manager, &name, 0, 0)` | Counts one content | tested |
+| `f_8112d570` | `Pouch_AddByActorName(manager, &name, meta, quantity)` | The shared give-by-name routine: `x1` points at a word that points at the actor-name string, `w3` is the quantity. It can issue further gives itself, so one call is not always one item | read |
+| `f_8112d370` | `SeqOneShotPushToPouch` | Reads the name and the quantity through the node's tagged pointers at `+0x20` and `+0x30`, then calls `f_8112d570` | read |
+| `f_80c8f590` | `OneShotPouchContentPushToPouchOwnInEvent` | A picked-up item's event: finds the owning actor's pouch-content component and calls `f_80c8f620` | read |
+| `f_80c8f620` | `PouchContent_Push(component)` | Gives the component's owner by its actor name (the owner is `+0x18`, its name `+0x260`) through `f_8112d570`, quantity 1 | read |
+| `f_82b00750` | `Chest_FillGetRequest(node, request)` | Fills a chest's get-event request, the helper behind `QuerySetTreasureboxGetEventRequestArg`. The argument named `ContentName` carries the reward's actor name, set through `f_81003fe0` at two places. It picks what the chest asks for; the pouch write comes later, through the rows above | read |
+| `f_80d472f0` | `OneShotActorHolderTryRequestCreateActorWithActorFileName` | Creates a holder's content actor (a chest's shown item among others) by actor-file name; the name comes through the tagged pointer at the node's `+0x38` | read |
 
 ## Data
 
