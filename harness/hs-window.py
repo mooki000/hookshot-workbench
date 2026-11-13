@@ -5,14 +5,14 @@
     hs-window.py watch <run folder> <pid of the run's top process>
 
 The user's permission (2026-11-11: "you can add the rules for windowed") covers exactly what `rules` sends to his
-running Hyprland: two window rules for the test window's own class, hookshot-harness. Everything else here is reading
+running Hyprland: two window rules for the test window's own class, ls-harness. Everything else here is reading
 (`hyprctl instances/monitors/clients/activewindow -j`). Nothing is dispatched, no setting is changed, no file under
 ~/.config is touched, no input is sent.
 
 rules: finds the one live Hyprland instance and its Wayland socket (whatever the caller's environment says; a
   safe-mode instance only if .hookshot-harness/safe-mode-ok holds its pid, as the GPU gate does), refuses when no
   monitor is on, the session is locked (a window is not drawn then: a frame log from it is no presentation
-  measurement) or a hookshot-harness window is already open, writes the active window, the clients and the monitors
+  measurement) or an ls-harness window is already open, writes the active window, the clients and the monitors
   to <run>/window-before.json, sends the two rules with `hyprctl eval` and writes each with its answer to
   <run>/window-rules.txt. Exit 0 and one line on stdout, "<instance> <socket> <the monitor's pixels WxH> <its
   logical size WxH>", only if both answered `ok`. Otherwise exit 3, the reason on stderr and in <run>/window-refused.txt, and the
@@ -41,7 +41,7 @@ watch: until the run's top process is gone, reads the clients and the active win
 """
 import json, os, signal, subprocess, sys, time
 
-CLASS = "hookshot-harness"
+CLASS = "ls-harness"
 SAFE_OK = "/home/mooki/Games/.hookshot-harness/safe-mode-ok"
 
 
@@ -109,10 +109,10 @@ def rules(R):
     with open(os.path.join(R, "window-before.json"), "w") as f:
         json.dump(before, f, indent=1)
     texts = [
-        'hl.window_rule({ name = "hookshot-harness", match = { class = "^hookshot-harness$" }, '
+        'hl.window_rule({ name = "ls-harness", match = { class = "^ls-harness$" }, '
         'no_initial_focus = true, no_focus = true, '
         'suppress_event = "fullscreen maximize activate activatefocus fullscreenoutput" })',
-        'hl.window_rule({ name = "hookshot-harness-float", match = { class = "^hookshot-harness$" }, '
+        'hl.window_rule({ name = "ls-harness-float", match = { class = "^ls-harness$" }, '
         'float = true, size = "%d %d", move = "0 0" })' % (lw, lh),
     ]
     with open(os.path.join(R, "window-rules.txt"), "w") as f:

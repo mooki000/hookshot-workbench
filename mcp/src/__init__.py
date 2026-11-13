@@ -1,4 +1,4 @@
-"""Hookshot workbench MCP operations."""
+"""LS workbench MCP operations."""
 import os
 
 # FastMCP otherwise loads cwd/.env during import. This server never does.

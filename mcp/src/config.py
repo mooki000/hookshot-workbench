@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Mapping
 from src.models.knowledge import KnowledgeConfig
 
-PREFIX = "HOOKSHOT_WB_"
+PREFIX = "LS_WB_"
 
 
 def _absolute(value: str) -> Path:
@@ -55,7 +55,7 @@ class Config:
             except (ValueError, TypeError):
                 raise ValueError(f"{PREFIX}{name} must be a JSON array of absolute paths") from None
         home = Path(e.get("HOME", str(Path.home()))).expanduser().resolve()
-        state = path("STATE_ROOT") or _absolute(e.get("XDG_STATE_HOME", str(home / ".local/state"))) / "hookshot-workbench"
+        state = path("STATE_ROOT") or _absolute(e.get("XDG_STATE_HOME", str(home / ".local/state"))) / "ls-workbench"
         # Secrets and ordinary download folders can never be registered as data roots.
         protected = (home / ".config", home / ".ssh", home / "Downloads", *roots("PROTECTED_ROOTS"))
         try:
@@ -63,7 +63,7 @@ class Config:
             if not 0.05 <= idle <= 3600:
                 raise ValueError
         except ValueError:
-            raise ValueError("HOOKSHOT_WB_BROKER_IDLE_SECONDS must be between 0.05 and 3600") from None
+            raise ValueError("LS_WB_BROKER_IDLE_SECONDS must be between 0.05 and 3600") from None
         knowledge = None
         knowledge_reason = "not_configured"
         if knowledge_path := path("KNOWLEDGE_CONFIG"):

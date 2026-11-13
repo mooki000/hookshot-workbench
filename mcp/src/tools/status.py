@@ -43,7 +43,7 @@ def status(deps) -> dict:
             "active_jobs": deps.registry.list_jobs(active_only=True).model_dump(),
             "protected_player_active": None,
             "gate_summary": gate_summary.model_dump(),
-            "tool_revisions": {"server": version("hookshot-workbench-mcp"), "fastmcp": version("fastmcp"),
+            "tool_revisions": {"server": version("ls-workbench-mcp"), "fastmcp": version("fastmcp"),
                                **{q.device + "_gate": q.source_sha256 for q in gate_summary.devices}},
             "tools": deps.tool_catalogue()}
 

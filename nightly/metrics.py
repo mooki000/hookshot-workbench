@@ -132,7 +132,7 @@ def system_telemetry(run, *, start=None, end=None):
         return None
     try:
         path = Path(__file__).resolve().parent.parent / 'perf' / 'hs_perf.py'
-        spec = importlib.util.spec_from_file_location('hookshot_system_telemetry', path)
+        spec = importlib.util.spec_from_file_location('ls_system_telemetry', path)
         reader = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(reader)
         return reader.attach(run, start=start, end=end)

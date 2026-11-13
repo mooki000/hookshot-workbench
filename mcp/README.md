@@ -1,22 +1,29 @@
-# Hookshot workbench MCP
+# LS workbench MCP
 
-A local stdio server for owned jobs and retained evidence in the Hookshot workbench. It is an optional client of the
+A local stdio server for owned jobs and retained evidence in the LS workbench. It is an optional client of the
 workbench, not a replacement scheduler or a game control protocol. It starts with observation tools only. Nothing here
 includes game files, saves, routes, generated world data or a local machine's configuration.
+
+The package is `ls-workbench-mcp`, the stdio server and entry point are `ls-workbench`, and the shell client is `ls-wb`.
+Workbench settings use `LS_WB_*`. These names do not rename the external HS game: `src/game_literals.py` keeps its
+executable, renderer, log, build-profile, build-environment and frame-capture MIME names unchanged. The current MCP
+adapters still target that runtime; this naming change does not add support for another game identity. Synthetic
+fixtures retain independent literal spellings to check that boundary. Existing configured host paths, game source
+filenames, repository URLs and `workbench://` resource URIs are unchanged; no live installation is migrated here.
 
 The runtime is Python 3.12 or later on Linux, FastMCP 4.1.3 and MCP SDK 2.3.0, resolved in `uv.lock`. Linux procfs,
 process groups and pidfds are required for owned worker supervision. The package does not install or update a game,
 start a gate, contact a provider, or discover credentials on startup.
 
-## How this relates to Hookshot's own client and MCP server
+## How this relates to HS's own client and MCP server
 
-[Hookshot #2904](https://github.com/NotRexed/Hookshot/pull/2904) adds the generic session layer in
+[HS #2904](https://github.com/NotRexed/Hookshot/pull/2904) adds the generic session layer in
 `scripts/hookshot_ctl.py`; an optional thin MCP server and scenario runner follow, taking over
 [#1025](https://github.com/NotRexed/Hookshot/pull/1025). That layer has no machine policy.
 
 This is the workbench's layer for one machine doing many tests: it starts games only through the workbench gates,
 keeps runs/jobs/artifacts, and adds evidence tools, pre-push and Windows-target checks, and bounded readers. It speaks
-the same documented game control bridge protocol itself; it does not import Hookshot's client. Its single-reader
+the same documented game control bridge protocol itself; it does not import HS's client. Its single-reader
 dispatcher preserves interleaved events and matches concurrent replies, rather than importing mutable checkout code
 or losing subscription events while awaiting a command.
 
@@ -34,7 +41,7 @@ export UV_PYTHON_INSTALL_DIR="$UV_CACHE_DIR/python"
 uv sync --locked --python /absolute/path/to/python3
 uv run --locked python -m src.main
 # Equivalent console entry point:
-uv run --locked hookshot-workbench
+uv run --locked ls-workbench
 ```
 
 The banner is disabled. Stdout is reserved for MCP; diagnostics go to stderr. The package disables FastMCP's default
@@ -45,13 +52,13 @@ A generic host entry (replace the paths yourself; no server-side shell expansion
 ```json
 {
   "mcpServers": {
-    "hookshot-workbench": {
+    "ls-workbench": {
       "command": "uv",
       "args": ["run", "--locked", "--directory", "/absolute/path/to/workbench/mcp", "python", "-m", "src.main"],
       "env": {
         "UV_CACHE_DIR": "/absolute/path/to/workbench/.uv-cache",
         "UV_PYTHON_INSTALL_DIR": "/absolute/path/to/workbench/.uv-cache/python",
-        "HOOKSHOT_WB_PROFILE": "observe"
+        "LS_WB_PROFILE": "observe"
       }
     }
   }
@@ -67,18 +74,18 @@ as an unauthenticated remote service. Missing optional backends are reported as 
 No configured MCP client is needed for the CLI. From the repository root:
 
 ```sh
-uv run --project mcp hookshot-wb list --json
-uv run --project mcp hookshot-wb list --profile operate
-uv run --project mcp hookshot-wb call workbench_status --args '{}'
-uv run --project mcp hookshot-wb read workbench://policy
-uv run --project mcp hookshot-wb prompt recover_or_cancel --args '{"job_or_run_id":"an-owned-id"}'
-uv run --project mcp hookshot-wb broker status
-uv run --project mcp hookshot-wb broker stop --timeout 90
+uv run --project mcp ls-wb list --json
+uv run --project mcp ls-wb list --profile operate
+uv run --project mcp ls-wb call workbench_status --args '{}'
+uv run --project mcp ls-wb read workbench://policy
+uv run --project mcp ls-wb prompt recover_or_cancel --args '{"job_or_run_id":"an-owned-id"}'
+uv run --project mcp ls-wb broker status
+uv run --project mcp ls-wb broker stop --timeout 90
 ```
 
 Tool calls go through the real server in memory, with the same profiles, schema validation and error envelopes.
 Structured results are JSON on stdout; coded errors are JSON on stderr with a nonzero exit. On the first broker-owned
-call, stderr also says `hookshot-wb: broker started` once. A returned Job is returned immediately, not awaited to
+call, stderr also says `ls-wb: broker started` once. A returned Job is returned immediately, not awaited to
 completion: in particular, a launch Job describes the session's lifetime. `job_read` nests rows under `events.events`;
 each event name is its `kind`, for example `bridge_ready`. That event proves a bridge reply, **not input or image readiness**.
 `job_wait` timing out is a normal result with `timed_out: true`;
@@ -96,12 +103,12 @@ For bounded shell observation, `job_wait` can wait up to 30 seconds per call; re
 Read the existing readiness Job's result from `events.events`, not from the lifetime launch Job:
 
 ```sh
-uv run --project mcp hookshot-wb call job_read --args "{\"job_id\":\"$JOB\",\"limit\":100}" |
+uv run --project mcp ls-wb call job_read --args "{\"job_id\":\"$JOB\",\"limit\":100}" |
   jq '.events.events[] | select(.kind == "bridge_ready")'
-uv run --project mcp hookshot-wb call session_wait --args "{\"run_id\":\"$RUN\",\"predicate\":{\"kind\":\"state\",\"state\":\"menu\"},\"stable_frames\":30,\"timeout_seconds\":90,\"idempotency_key\":\"ui-ready\"}"
+uv run --project mcp ls-wb call session_wait --args "{\"run_id\":\"$RUN\",\"predicate\":{\"kind\":\"state\",\"state\":\"menu\"},\"stable_frames\":30,\"timeout_seconds\":90,\"idempotency_key\":\"ui-ready\"}"
 # Set WAIT_JOB from that response; overall deadline remains the operator's bound.
-uv run --project mcp hookshot-wb call job_wait --args "{\"job_id\":\"$WAIT_JOB\",\"timeout_seconds\":30}"
-uv run --project mcp hookshot-wb call job_read --args "{\"job_id\":\"$WAIT_JOB\",\"limit\":100}" |
+uv run --project mcp ls-wb call job_wait --args "{\"job_id\":\"$WAIT_JOB\",\"timeout_seconds\":30}"
+uv run --project mcp ls-wb call job_read --args "{\"job_id\":\"$WAIT_JOB\",\"limit\":100}" |
   jq '.events.events[] | select(.kind == "result") | .data'
 ```
 
@@ -123,7 +130,7 @@ Unsent startup failures can be reconciled, but a sent request with a lost reply 
 Idle shutdown defaults to 60 seconds and does not stop live owned sessions/jobs. Explicit stop, signal or a configured
 foreground lifetime closes sessions in game-before-gate order and records `broker_stop`, `broker_signal` or
 `broker_deadline` as the Run reason. Start foreground service management with
-`uv run --project mcp hookshot-wb serve`; optional `--idle-seconds` and `--lifetime-seconds` bound that service.
+`uv run --project mcp ls-wb serve`; optional `--idle-seconds` and `--lifetime-seconds` bound that service.
 Changing backend configuration requires stopping the existing broker after its jobs are reconciled, then starting a
 new one. IPC requests cap at 256 KiB and responses at 8 MiB.
 
@@ -133,31 +140,31 @@ No installer writes this example into a home or configuration directory.
 
 ## Configuration
 
-All package variables use `HOOKSHOT_WB_`. Paths must be absolute (a leading `~` expands to the account's home).
+All package variables use `LS_WB_`. Paths must be absolute (a leading `~` expands to the account's home).
 No path to an actual game or checkout is built into this package. The host, not a model's tool arguments, configures
 trusted tools and registered roots. Optional values default to unset.
 
 | Variable | Default / meaning |
 |---|---|
-| `HOOKSHOT_WB_STATE_ROOT` | `$XDG_STATE_HOME/hookshot-workbench`, or `~/.local/state/hookshot-workbench`. Durable private registry and worker files. Must be outside every repository and not writable by others. |
-| `HOOKSHOT_WB_HARNESS_DIR` | Unset. Trusted installed harness directory. |
-| `HOOKSHOT_WB_GPU_GATE` | Unset. Existing card gate script. Queue observation reads its literal default state directory; it never runs the script. |
-| `HOOKSHOT_WB_INTEL_GATE` | Unset. Existing Intel gate script. |
-| `HOOKSHOT_WB_BUILD_GATE` | Unset. Existing build gate script. |
-| `HOOKSHOT_WB_IDLE_GATE` | Unset. Existing CPU analysis/test gate script. |
-| `HOOKSHOT_WB_CHECKOUT` | Unset. Reviewed Hookshot checkout containing trusted tooling. Not a caller-selected PR checkout. |
-| `HOOKSHOT_WB_DEPENDENCY_PYTHON` | The server's interpreter. Explicit interpreter for trusted dependency tools. |
-| `HOOKSHOT_WB_READ_ROOTS` | `[]`. JSON array of explicitly registered readable roots. |
-| `HOOKSHOT_WB_WRITE_ROOTS` | `[]`. JSON array of explicitly registered writable roots (also readable). Register only owned disposable work/evidence roots. |
-| `HOOKSHOT_WB_PROTECTED_ROOTS` | `[]`, added to always-protected `~/.config`, `~/.ssh`, `~/Downloads`. Add every player game/save folder; protection wins over registered roots. |
-| `HOOKSHOT_WB_PROFILE` | `observe`. `operate` opts into RUN and WRITE_LOCAL tools as well. Unknown values fail startup. |
-| `HOOKSHOT_WB_EXTRA_TOOLS` | Empty. Comma-separated exact tool names to add to the selected profile. Unknown or forbidden names fail startup. |
-| `HOOKSHOT_WB_BROKER_IDLE_SECONDS` | `60`; between 0.05 and 3,600 seconds. Idle CLI broker shutdown only when it owns no live work. |
-| `HOOKSHOT_WB_SESSION_CATALOGUE` | Unset. Operator-owned local session/build/save/profile catalogue. |
-| `HOOKSHOT_WB_CHECKS_CATALOGUE` | Unset. Operator-owned reviewed checkouts, check/build profiles and CI repository allowlist. |
-| `HOOKSHOT_WB_KNOWLEDGE_CONFIG` | Unset. Operator-owned knowledge/read-adapter configuration. |
-| `HOOKSHOT_WB_PANELS_SCRIPT` | Unset. Reviewed image-panel helper. |
-| `HOOKSHOT_WB_JOURNAL_READER` | Unset. Reviewed journal reader for bounded retained fault evidence; unavailable access remains unknown. |
+| `LS_WB_STATE_ROOT` | `$XDG_STATE_HOME/ls-workbench`, or `~/.local/state/ls-workbench`. Durable private registry and worker files. Must be outside every repository and not writable by others. |
+| `LS_WB_HARNESS_DIR` | Unset. Trusted installed harness directory. |
+| `LS_WB_GPU_GATE` | Unset. Existing card gate script. Queue observation reads its literal default state directory; it never runs the script. |
+| `LS_WB_INTEL_GATE` | Unset. Existing Intel gate script. |
+| `LS_WB_BUILD_GATE` | Unset. Existing build gate script. |
+| `LS_WB_IDLE_GATE` | Unset. Existing CPU analysis/test gate script. |
+| `LS_WB_CHECKOUT` | Unset. Reviewed HS checkout containing trusted tooling. Not a caller-selected PR checkout. |
+| `LS_WB_DEPENDENCY_PYTHON` | The server's interpreter. Explicit interpreter for trusted dependency tools. |
+| `LS_WB_READ_ROOTS` | `[]`. JSON array of explicitly registered readable roots. |
+| `LS_WB_WRITE_ROOTS` | `[]`. JSON array of explicitly registered writable roots (also readable). Register only owned disposable work/evidence roots. |
+| `LS_WB_PROTECTED_ROOTS` | `[]`, added to always-protected `~/.config`, `~/.ssh`, `~/Downloads`. Add every player game/save folder; protection wins over registered roots. |
+| `LS_WB_PROFILE` | `observe`. `operate` opts into RUN and WRITE_LOCAL tools as well. Unknown values fail startup. |
+| `LS_WB_EXTRA_TOOLS` | Empty. Comma-separated exact tool names to add to the selected profile. Unknown or forbidden names fail startup. |
+| `LS_WB_BROKER_IDLE_SECONDS` | `60`; between 0.05 and 3,600 seconds. Idle CLI broker shutdown only when it owns no live work. |
+| `LS_WB_SESSION_CATALOGUE` | Unset. Operator-owned local session/build/save/profile catalogue. |
+| `LS_WB_CHECKS_CATALOGUE` | Unset. Operator-owned reviewed checkouts, check/build profiles and CI repository allowlist. |
+| `LS_WB_KNOWLEDGE_CONFIG` | Unset. Operator-owned knowledge/read-adapter configuration. |
+| `LS_WB_PANELS_SCRIPT` | Unset. Reviewed image-panel helper. |
+| `LS_WB_JOURNAL_READER` | Unset. Reviewed journal reader for bounded retained fault evidence; unavailable access remains unknown. |
 
 The package also uses `HOME` and `XDG_STATE_HOME` only for the documented defaults. `UV_CACHE_DIR` and
 `UV_PYTHON_INSTALL_DIR` configure uv, not the server. The package forces `FASTMCP_ENV_FILE` to the null device; framework
@@ -207,7 +214,7 @@ claim is durable and bound to one job; using a new idempotency key does not reus
 ## Optional proposed telemetry file
 
 `system_telemetry(run_id, frame_window=None, time_window=None)` is a separate READ surface for a registered `perf.csv`.
-The writer and file format are still a proposal in [Hookshot issue #2915](https://github.com/NotRexed/Hookshot/issues/2915).
+The writer and file format are still a proposal in [HS issue #2915](https://github.com/NotRexed/Hookshot/issues/2915).
 The tool reports `available:false` and **“no performance file in this run”** when that run has no registered existing file;
 it does not pretend the game already writes one or treat absence as an error.
 

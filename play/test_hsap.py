@@ -377,7 +377,7 @@ def fails(kind, function, what):
 
 def transport_checks():
     missing_oot = ("this build has no oot subscription: use hsap_file.py, or a build with "
-                   "Hookshot #2292's control-bridge commits")
+                   "HS #2292's control-bridge commits")
     for refusal in (('bad_request', 'events: present, state, log, map'),
                     ('unknown_cmd', 'no such command'), ('unavailable', 'OoT sampling is not available')):
         with Simulation(subscribe_error=refusal) as sim:

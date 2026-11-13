@@ -1,6 +1,6 @@
 #!/bin/bash
 # hs-nocore.sh <command> [args...] : runs the command with the core-dump limit at one byte, which every child inherits.
-# Hookshot's game-free checks crash fixtures on purpose (tests/test_linux_driver_fault_guard.py: guard, SIGSEGV;
+# The game's game-free checks crash fixtures on purpose (tests/test_linux_driver_fault_guard.py: guard, SIGSEGV;
 # tests/test_recorder_sync.py: recorder_sync_test.exe broken12 and broken13, SIGSEGV and SIGABRT): three core dumps a run
 # of tests/run_all.py, each one a "Process crashed" notification on the user's desktop (107 in the night of 2026-11-10).
 # With the limit at exactly 1 the kernel does not hand the crash to systemd-coredump at all ("RLIMIT_CORE is set to 1,

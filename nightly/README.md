@@ -1,7 +1,11 @@
-# Hookshot nightly playtest
+# LS nightly playtest
 
 A local, non-posting workflow for the published `nightly` tag and rolling tests of pinned `origin/main`:
 full source builds, named game-free checks, private scene definitions, preserved evidence and regression comparisons.
+
+Published guidance uses `ls-nightly-playtest` and LS/HS game prose. Existing live harness paths, runtime filenames,
+build switches and watch ownership are unchanged; the repository rename does not perform a host cutover.
+Runtime-selection fixtures are in `test_runtime_names.py`.
 
 ## Current proof and authorization
 
@@ -147,4 +151,4 @@ Game-free tests:
 Exhaustive destination and setting/value sweeps, save-write/load cycles, continuous 30-minute growth runs,
 intentional build-load stress, empty-cache stress and simultaneous-game stress. The generic control steps do not
 constitute a tested implementation of those complete families. Their bounded-run policy and optional timer command
-are described in `hookshot-nightly-playtest`; the timer is disabled and has not been exercised.
+are described in `ls-nightly-playtest`; the timer is disabled and has not been exercised.

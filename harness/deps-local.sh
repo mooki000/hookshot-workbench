@@ -1,5 +1,5 @@
 #!/bin/bash
-# What a Hookshot build from source needs on this machine (Arch) that the system does not have, fetched into one folder
+# What an LS build from source needs on this machine (Arch) that the system does not have, fetched into one folder
 # of the work area, nothing outside it (no pacman, no sudo, no pip outside that folder). Written 2026-11-10 (HsWorkbench).
 #
 # Why not scripts/linux/deps.sh: it writes only under $DEPS, but it is written for Ubuntu 22.04 (the AppImage's
@@ -12,7 +12,7 @@
 #   python/   python-build-standalone CPython 3.12 + requirements.txt (deps.sh's python step, same download and SHA-256)
 #   cpm/      Vulkan-Headers, SPIRV-Headers, VulkanMemoryAllocator in the CPM layout (deps.sh's cpm step, same tree hashes)
 #
-#   deps-local.sh <hookshot worktree> [<deps folder, default /home/mooki/Code/hookshot-wt/deps>]
+#   deps-local.sh <game worktree> [<deps folder, default /home/mooki/Code/hookshot-wt/deps>]
 # Then: RX_CPM=<deps>/cpm and <deps>/python/bin/python3 for every nx2/ command.
 set -euo pipefail
 WT=$(cd "${1:?worktree}" && pwd)

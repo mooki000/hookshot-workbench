@@ -4,6 +4,7 @@ import base64
 from datetime import datetime
 import json
 from pathlib import Path
+from src.game_literals import HS_GAME
 from src.models import TERMINAL
 from src.models.evidence import LogPage
 from src.effects.evidence_common import configured, named_run_artifact, redact
@@ -26,7 +27,7 @@ def run_logs_impl(deps, run_id, cursor=None, last_lines=None, byte_cap=16384, si
     if signature is not None and signature not in FILTERS:
         raise deps.error("invalid_argument", operation)
     run = deps.registry.get_run(run_id)
-    art, path = named_run_artifact(deps, run, {"hookshot_log.txt"}, operation)
+    art, path = named_run_artifact(deps, run, {HS_GAME["log"]}, operation)
     if art.mime != "text/plain":
         raise deps.error("refused_by_policy", operation)
     stat = path.stat()
@@ -176,7 +177,7 @@ async def _journal(deps, run):
 
 async def run_faults_impl(deps, run_id):
     run = deps.registry.get_run(run_id)
-    art, path = named_run_artifact(deps, run, {"hookshot_log.txt"}, "run_faults")
+    art, path = named_run_artifact(deps, run, {HS_GAME["log"]}, "run_faults")
     if art.mime != "text/plain":
         raise deps.error("refused_by_policy", "run_faults")
     lines, covered = _whole_prefix(path, 4 * SCAN_CAP)

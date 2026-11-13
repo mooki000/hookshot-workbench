@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Find the change that made a Hookshot build worse, from evidence only.
+"""Find the change that made an LS build worse, from evidence only.
 
   regress.py plan --repo R --good A --bad B --output NEW_DIR
   regress.py hunt --repo R --good A --bad B --scenario LOCAL.json --output NEW_DIR --max-holds N

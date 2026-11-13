@@ -12,7 +12,7 @@ from src.config import Config
 from src.errors import WorkbenchError, fail
 
 
-BROKER_STARTED = "hookshot-wb: broker started"
+BROKER_STARTED = "ls-wb: broker started"
 
 
 class Parser(argparse.ArgumentParser):
@@ -53,7 +53,7 @@ def parser() -> Parser:
         target.add_argument("--timeout", type=positive_seconds, default=argparse.SUPPRESS,
                             help="Bound the RPC wait in seconds (default: 60); never replay it.")
 
-    root = Parser(prog="hookshot-wb", description=__doc__)
+    root = Parser(prog="ls-wb", description=__doc__)
     common(root)
     root.set_defaults(profile=None, timeout=60.0)
     commands = root.add_subparsers(dest="command", required=True)

@@ -5,7 +5,7 @@ from src.policy import Safety, ToolSpec
 
 SPECS = (
     ToolSpec("system_telemetry", Safety.READ,
-        "Read registered perf.csv only when present. Its writer/format is still proposed in Hookshot issue #2915; no speed verdict.",
+        "Read registered perf.csv only when present. Its writer/format is still proposed in HS issue #2915; no speed verdict.",
         shell_route="Optional proposed perf.csv reader (#2915); no file means unavailable observation, not an error"),
 )
 

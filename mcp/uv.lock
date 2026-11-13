@@ -440,7 +440,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hookshot-workbench-mcp"
+name = "ls-workbench-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

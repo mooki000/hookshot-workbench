@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one local Hookshot scenario through hs-run.sh inside an existing gate hold, and measure it.
+"""Run one local LS scenario through hs-run.sh inside an existing gate hold, and measure it.
 
 Public text: no scenario or game data lives here. The scenario JSON's `run` object supplies the save folder, the
 input script, the environment, the measurement window and the log lines the run must (or must not) show.
@@ -260,7 +260,7 @@ def system_telemetry(run, *, start=None, end=None):
         return None
     try:
         path = HARN / 'perf' / 'hs_perf.py'
-        spec = importlib.util.spec_from_file_location('hookshot_system_telemetry', path)
+        spec = importlib.util.spec_from_file_location('ls_system_telemetry', path)
         reader = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(reader)
         return reader.attach(run, start=start, end=end)

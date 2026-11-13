@@ -17,6 +17,7 @@ import time
 from typing import Awaitable, Callable
 
 from src.errors import WorkbenchError
+from src.game_literals import HS_GAME
 from src.models import Job, Producer, Receipt, State, TERMINAL, utc_now
 from src.models.session import (GameSample, InputResult, InputStep, Option, OptionsChanged, OptionsPage,
     Predicate, PredicateResult, Sample, SaveFile, SaveSlot, SavesPage, ShotResult, StopResult, TravelResult)
@@ -526,7 +527,7 @@ class SessionService:
             raise deps.error("refused_by_policy", "session_launch")
         # The wrapper writes caches and options alongside the executable.
         deps.paths.output(copy / ("permission-"+new_id("probe")))
-        if not os.access(copy / "hookshot", os.X_OK) or not (copy / "image.bin").is_file() or not (copy / "romfs").is_dir():
+        if not os.access(copy / HS_GAME["executable"], os.X_OK) or not (copy / "image.bin").is_file() or not (copy / "romfs").is_dir():
             raise deps.error("unavailable", "session_launch")
         wrapper = deps.config.harness_dir / "hs-run.sh" if deps.config.harness_dir else None
         gate = deps.config.gpu_gate if profile.lane == "gpu" else deps.config.intel_gate
@@ -609,8 +610,8 @@ class SessionService:
             wall_seconds=session.plan["hold_seconds"]-20, queued=True, grace_seconds=20, cancellation="adapter")
         admitted, ready, live_log = False, False, False
         while deps.registry.get_job(process.job_id).state not in TERMINAL:
-            if not live_log and (root / "hookshot_log.txt").is_file():
-                art = deps.registry.add_live_artifact(root / "hookshot_log.txt", guards=deps.paths,
+            if not live_log and (root / HS_GAME["log"]).is_file():
+                art = deps.registry.add_live_artifact(root / HS_GAME["log"], guards=deps.paths,
                     mime="text/plain", producer=Producer(tool="session_launch"), run_id=session.run_id)
                 current = deps.registry.get_run(session.run_id)
                 deps.registry.update_run(session.run_id, artifacts=[*current.artifacts, art.id])
@@ -667,7 +668,7 @@ class SessionService:
         # the registry, but keep only one current named log in the Run manifest.
         artifacts = [ident for ident in run.artifacts if not (
             (art := self.deps.registry.get_artifact(ident)).producer.tool == "session_launch" and
-            not art.complete and self.deps.registry.artifact_path(ident, self.deps.paths).name == "hookshot_log.txt")]
+            not art.complete and self.deps.registry.artifact_path(ident, self.deps.paths).name == HS_GAME["log"])]
         def load_values(filename):
             try:
                 raw = (session.root / filename).read_bytes()
@@ -684,7 +685,7 @@ class SessionService:
         artifact = self.deps.registry.add_artifact(context_path, guards=self.deps.paths, mime="application/json",
             producer=Producer(tool="session_launch"), run_id=session.run_id, complete=True)
         artifacts.append(artifact.id)
-        for filename, mime, clock in (("hookshot_log.txt", "text/plain", None), ("frames.csv", "text/csv", "renderer-offscreen-submit"),
+        for filename, mime, clock in ((HS_GAME["log"], "text/plain", None), ("frames.csv", "text/csv", "renderer-offscreen-submit"),
                 ("present.csv", "text/csv", "game-present"), ("perf.csv", "text/csv", "renderer-offscreen-submit"),
                 ("exit.txt", "text/plain", None), ("session-stop.json", "application/json", "host-monotonic")):
             path = session.root / filename

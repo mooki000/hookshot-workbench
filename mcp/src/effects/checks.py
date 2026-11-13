@@ -8,6 +8,7 @@ import re
 import sys
 import uuid
 from src.errors import WorkbenchError
+from src.game_literals import HS_GAME
 from src.models import Build, Producer, Receipt, State, TERMINAL, utc_now
 from src.models.checks import Plan, PlanResult
 from src.policy import child_environment
@@ -122,8 +123,9 @@ def seed_profile(deps, prof, source):
 def build_env(deps, prof, root, source):
     env = child_environment(root)
     env.update(RX_CPM=str(prof.cpm), RX_RELEASE="1", OOT_WORK=str(source / "work/build"),
-        RX_PGO=str(source / "work/build/hookshot_pieces.prof"),
-        HOOKSHOT_LIFT_JOBS=str(prof.lift_jobs), HOOKSHOT_KEEP_BUILD_FILES="1")
+        RX_PGO=str(source / "work/build" / HS_GAME["build_profile"]))
+    env[HS_GAME["lift_jobs_env"]] = str(prof.lift_jobs)
+    env[HS_GAME["keep_build_files_env"]] = "1"
     return env
 
 

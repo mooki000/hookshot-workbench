@@ -8,6 +8,7 @@ from fastmcp import Client
 from src.config import Config
 from src.deps import Deps
 from src.errors import WorkbenchError
+from src.game_literals import HS_GAME
 from src.main import build_server, configure_logging
 from src.models import State, Receipt, Producer, utc_now
 from src.policy import DENIED_TOOLS, Safety, ToolSpec, check_spec, PathGuards, Policy, child_environment
@@ -49,6 +50,7 @@ READ_TOOLS = {
 async def test_catalogue(config, profile, extra):
     deps = Deps(replace(config, profile=profile, extra_tools=extra))
     server = build_server(deps=deps)
+    assert server.name == "ls-workbench"
     async with Client(server) as client:
         tools = {tool.name: tool for tool in await client.list_tools()}
         assert set(tools) == (set(REQUIRED) if profile == "operate" else READ_TOOLS | set(extra))
@@ -129,19 +131,31 @@ async def test_events_runs_and_wait(deps):
 
 def test_logging_keeps_stdout_clean(capsys):
     configure_logging()
-    logging.getLogger("hookshot_workbench").warning("fixture message")
+    logging.getLogger("ls_workbench").warning("fixture message")
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "fixture message" in captured.err
 
 
 def test_config_explicit_environment(tmp_path):
-    config = Config.from_env({"HOME": str(tmp_path), "HOOKSHOT_WB_READ_ROOTS": json.dumps([str(tmp_path / "owned")])})
-    assert config.state_root == tmp_path / ".local/state/hookshot-workbench"
+    config = Config.from_env({"HOME": str(tmp_path), "LS_WB_READ_ROOTS": json.dumps([str(tmp_path / "owned")])})
+    assert config.state_root == tmp_path / ".local/state/ls-workbench"
     assert config.read_roots == (tmp_path / "owned",)
     assert tmp_path / ".config" in config.protected_roots
     with pytest.raises(ValueError):
-        Config.from_env({"HOOKSHOT_WB_STATE_ROOT": "relative"})
+        Config.from_env({"LS_WB_STATE_ROOT": "relative"})
+
+
+def test_external_game_literals_remain_exact():
+    assert HS_GAME == {
+        "executable": "hookshot",
+        "renderer": "hookshot_vk.so",
+        "log": "hookshot_log.txt",
+        "build_profile": "hookshot_pieces.prof",
+        "lift_jobs_env": "HOOKSHOT_LIFT_JOBS",
+        "keep_build_files_env": "HOOKSHOT_KEEP_BUILD_FILES",
+        "framelog_mime": "application/x-hookshot-framelog",
+    }
 
 
 def test_path_guards(config, tmp_path):

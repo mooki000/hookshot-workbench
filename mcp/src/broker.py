@@ -269,7 +269,7 @@ async def _start(config, p, deadline):
                 raw = _config_bytes(config)
                 if len(raw) > MAX_CONFIG_BYTES:
                     raise fail("invalid_argument", "broker_configuration")
-                config_fd = os.memfd_create("hookshot-wb-config", os.MFD_CLOEXEC)
+                config_fd = os.memfd_create("ls-wb-config", os.MFD_CLOEXEC)
                 log_fd = os.open(p.directory / "server.log", os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
                 try:
                     with os.fdopen(os.dup(config_fd), "wb") as stream:

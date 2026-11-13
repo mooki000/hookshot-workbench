@@ -13,16 +13,16 @@
 #
 # 2. Nothing of the harness uses the card outside the gate. The likeliest cause of that crash was a test program built
 #    in /tmp and run beside a game without the gate. Every second the guard looks at each process of this user
-#    that has an NVIDIA device node open: one whose executable lies in a harness game copy (Hookshot's
-#    .hookshot-h-*), a worktree or clone (Hookshot's and anything built under hookshot-wt/) or
+#    that has an NVIDIA device node open: one whose executable lies in a harness game copy (the game's
+#    .hookshot-h-*), a worktree or clone (the game's and anything built under hookshot-wt/) or
 #    /tmp, and that does not run inside the gate (the gate puts HSGATE_IN_GATE=<its process id> into the environment
 #    of its command, which every child inherits; that process must be alive and hold the lock of one of the gate's
 #    two slots, the files 0 and 1 of the slot folder: hold it, not only have the file open as every waiter has), is
 #    killed and logged. The user's own programs and system tools (nvidia-smi, vulkaninfo, his games in
 #    ~/Games/Ocarina, ~/Games/Ocarina-linux-next and ~/Games/Hookshot) are never touched.
 #
-# (2026-11-10, HsWorkbench: Hookshot's game copies, worktrees and clone added; the reports moved from the other port's
-#    reports, now reference only, to Hookshot's /home/mooki/Code/hookshot-wt/reports: GUARD-TRIPPED.txt and lines in
+# (2026-11-10, HsWorkbench: the game's copies, worktrees and clone added; the reports moved from the other port's
+#    reports, now reference only, to /home/mooki/Code/hookshot-wt/reports: GUARD-TRIPPED.txt and lines in
 #    LOG.md.)
 # (2026-11-11, GateTwo: the gate has two slots; inside the gate is what holds slot 0's or slot 1's lock; a fault line
 #    also puts the switch back to 1.)

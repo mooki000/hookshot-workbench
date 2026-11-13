@@ -267,8 +267,8 @@ async def test_knowledge_search_and_registered_resources(kb):
         assert section["next_line"] == 3 and len(section["lines"]) == 2
         continuation = json.loads((await client.read_resource(section["next_uri"]))[0].text)
         assert continuation["lines"][0]["line"] == 3
-        skill = json.loads((await client.read_resource("workbench://skills/hookshot-workbench?limit=1"))[0].text)
-        raw = (kb.skills / "hookshot-workbench" / "SKILL.md").read_bytes()
+        skill = json.loads((await client.read_resource("workbench://skills/ls-workbench?limit=1"))[0].text)
+        raw = (kb.skills / "ls-workbench" / "SKILL.md").read_bytes()
         assert skill["revision"] == hashlib.sha256(raw).hexdigest()
         (kb.reports / "alpha.md").write_text("# Changed\n")
         await error(client, "knowledge_search", {"query": "Synthetic", "collection": "reports", "cursor": first["next_cursor"]}, "busy")
@@ -339,7 +339,7 @@ async def test_knowledge_prompt_installed_citations(kb, name):
 
 
 async def test_knowledge_prompt_missing_source_refuses(kb):
-    (kb.skills / "hookshot-workbench" / "SKILL.md").write_text("# Missing required section\n")
+    (kb.skills / "ls-workbench" / "SKILL.md").write_text("# Missing required section\n")
     deps = Deps(kb.config)
     with pytest.raises(WorkbenchError) as failure:
         prompt_plan_impl(deps, "recover_or_cancel", {"job_or_run_id": "synthetic"})

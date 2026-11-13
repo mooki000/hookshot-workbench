@@ -8,6 +8,7 @@ import sys
 from src.config import Config
 from src.deps import Deps
 from src.errors import WorkbenchError
+from src.game_literals import HS_GAME
 from src.models import Build, Producer, State, utc_now
 from src.models.checks import SourceResult
 from src.effects.checks import (build_env, catalogue, checkout, copy_tree, donor_record, profile,
@@ -220,7 +221,7 @@ class Worker:
         if len(stamps) != 1:
             raise self.deps.error("backend_failed", "build_source_stamp")
         if donor:
-            linked = [name for name in ("hookshot", "hookshot_vk.so")
+            linked = [name for name in (HS_GAME["executable"], HS_GAME["renderer"])
                       if re.search(r"^linked .*/" + re.escape(name) + r":", text, re.M)]
             if len(linked) != 2:
                 raise self.deps.error("backend_failed", "build_receipt")
@@ -234,7 +235,8 @@ class Worker:
                         target.write(chunk)
         elif "@@done " + str(output) not in text.splitlines():
             raise self.deps.error("backend_failed", "build_receipt")
-        hashes = {name: file_hash(prerequisite(self.deps, output / name)) for name in ("hookshot", "hookshot_vk.so")}
+        hashes = {name: file_hash(prerequisite(self.deps, output / name))
+                  for name in (HS_GAME["executable"], HS_GAME["renderer"])}
         # A build donor is never a played copy; no saves or run folders may enter its manifest.
         if any((output / name).exists() for name in ("runs", "user", "user-template")):
             raise self.deps.error("refused_by_policy", "build_output")

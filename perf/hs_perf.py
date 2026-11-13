@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read Hookshot perf CSV v1. Observations and suspicions only, never a speed verdict.
+"""Read LS/HS perf CSV v1. Observations and suspicions only, never a speed verdict.
 
 Window endpoints are inclusive sample receipts: elapsed seconds (default), frame:N,
 monotonic:S, or marker:EVENT[@OCCURRENCE]. Sample frame statistics are overlapping
@@ -35,7 +35,7 @@ INTEGERS = {'sample', 'monotonic_ns', 'game_frame', 'renderer_present', 'frame',
 CLOCKS = {'headless-renderer', 'swapchain'}
 EVENTS = {'loading_start', 'loading_end', 'map_change', 'capture_start', 'capture_end'}
 NOTICE = ('No speed verdict: frame-time claims require the existing alternating paired comparison, '
-          'a quiet machine and acceptable same-arm repeat spread (hookshot-perf-compare / regress). '
+          'a quiet machine and acceptable same-arm repeat spread (ls-perf-compare / regress). '
           'These are unweighted sampled observations, not causal or statistical-significance claims.')
 SPREAD_RULE = ('At least 3 available samples in each run; observed min/max ranges must be strictly disjoint '
                'and abs(mean B - mean A) must exceed max(max A - min A, max B - min B). '
@@ -295,7 +295,7 @@ def parse_perf(raw, source='<memory>'):
         cap.rows.append(row)
         cap.last_record_kind = row['kind']
     if cap.started is None:
-        cap.issue('missing_started_comment', 2, message='second line must be # started,<UTC ISO8601 time>,<Hookshot version>')
+        cap.issue('missing_started_comment', 2, message='second line must be # started,<UTC ISO8601 time>,<game version>')
     if summary_count > 1:
         cap.issue('multiple_summaries')
     if cap.clock is None and cap.rows:

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""hsap_file: the pilot's game side for Hookshot. Runs one game through hs-run.sh (GPU gate, headless) and plays steps on it:
+"""hsap_file: the pilot's game side for LS. Runs one game through hs-run.sh (GPU gate, headless) and plays steps on it:
 presses through HOS_INPUT_LIVE, Link's state from the state tap (HOS_OOT_STATE_FILE, branch play-harness), the save
 through the harness build's `!cheat 996`. Speaks the earlier autopilot's live channel, so pilot/pilot.py drives it as it
 drove that: steps appended to <live>/steps.txt, one JSON event a line in <live>/out.jsonl.
 
-    hsap_file.py <copy> <tag> <wall seconds> --live <dir> [--save <Hookshot user folder>] [--boot newgame|continue|none]
+    hsap_file.py <copy> <tag> <wall seconds> --live <dir> [--save <game user folder>] [--boot newgame|continue|none]
             [--shots <presents>] [--frames <file>]
 
 Events written: gameplay (the first state with Link in control), step (in = the step's line in steps.txt, src, result,

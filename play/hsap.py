@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""hsap: the pilot's game side for Hookshot. Runs one game through hs-run.sh (GPU gate, headless) and plays steps on it:
+"""hsap: the pilot's game side for LS. Runs one game through hs-run.sh (GPU gate, headless) and plays steps on it:
 inputs and Link's state through HOS_CONTROL (protocol 1, including the oot subscription). Only debug commands such as
 !cheat 996 and !shots still use HOS_INPUT_LIVE. Steps are appended to <live>/steps.txt; events go to <live>/out.jsonl.
 Received snapshots are normalized for the local pilot and journalled in <live>/state.jsonl, not read from that file.
 
-    hsap.py <copy> <tag> <wall seconds> --live <dir> [--save <Hookshot user folder>] [--boot newgame|continue|none]
+    hsap.py <copy> <tag> <wall seconds> --live <dir> [--save <game user folder>] [--boot newgame|continue|none]
             [--shots <presents>] [--analog]
 
 Events written: gameplay (the first state with Link in control), step (in = the step's line in steps.txt, src, result,
@@ -251,7 +251,7 @@ class Game:
                     if cmd == 'subscribe' and (error in ('unknown_cmd', 'unavailable') or
                             (error == 'bad_request' and ('event' in detail.lower() or 'oot' in detail.lower()))):
                         raise ControlError("this build has no oot subscription: use hsap_file.py, or a build with "
-                                           "Hookshot #2292's control-bridge commits")
+                                           "HS #2292's control-bridge commits")
                     raise ControlError(f'control {cmd} #{rid}: {error}: {detail}')
                 if cmd != 'status':
                     continue

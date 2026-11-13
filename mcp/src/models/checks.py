@@ -6,6 +6,7 @@ exact commits; registering a path is not a sandbox or an executable-code review.
 from pathlib import Path
 from typing import Annotated, Literal
 from pydantic import Field
+from src.game_literals import HS_GAME
 from src.models import Artifact, Record
 
 Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")]
@@ -62,7 +63,7 @@ class Plan(Record):
     changed_assets: list[str] = Field(max_length=100)
     changed_assets_truncated: bool = False
     required_gates: list[str]
-    expected_outputs: list[str] = ["hookshot", "hookshot_vk.so", "completion_receipt"]
+    expected_outputs: list[str] = [HS_GAME["executable"], HS_GAME["renderer"], "completion_receipt"]
     estimated_time: None = None
     dry_run: dict[str, int | str | None]
     plan_hash: Digest

@@ -117,7 +117,7 @@ class NamesTests(unittest.TestCase):
 
     def test_fixture_crt_policy_recognizes_both_headers(self):
         base = HERE if (HERE / 'skills').is_dir() else HERE.parent
-        script = base / 'skills/hookshot-pr-evidence/scripts/hs_win_fixture_check.py'
+        script = base / 'skills/ls-pr-evidence/scripts/hs_win_fixture_check.py'
         if not script.is_file():
             script = Path('/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/hs_win_fixture_check.py')
         checker = module('compat_windows_fixture', script)
@@ -130,12 +130,10 @@ class NamesTests(unittest.TestCase):
                 source.write_text('#define _CRT_SECURE_NO_WARNINGS\n' + text)
                 self.assertEqual(checker.crt_policy(source, ['clang', str(source)]), [])
 
-    def test_local_toolchain_input_accepts_either_but_not_both(self):
+    def test_local_toolchain_input_uses_the_workbench_namespace(self):
         self.assertIsNone(names.environment_value({}, 'MINGW'))
-        for project in names.PROJECTS:
-            self.assertEqual(names.environment_value({project.upper() + '_MINGW': '/fixture/sdk'}, 'MINGW'), '/fixture/sdk')
-        with self.assertRaisesRegex(names.NameError, 'mixed'):
-            names.environment_value({'HOOKSHOT_MINGW': '/old', 'LONGSHOT_MINGW': '/new'}, 'MINGW')
+        self.assertIsNone(names.environment_value({'LS_MINGW': ''}, 'MINGW'))
+        self.assertEqual(names.environment_value({'LS_MINGW': '/fixture/sdk'}, 'MINGW'), '/fixture/sdk')
 
     def test_profile_mapping_is_narrow(self):
         for project in names.PROJECTS:

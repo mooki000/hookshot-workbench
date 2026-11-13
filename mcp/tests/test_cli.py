@@ -24,13 +24,13 @@ from src.registry.process import identity
 
 PROJECT = Path(__file__).resolve().parents[1]
 FAKES = Path(__file__).parent / "fakes"
-STARTED = "hookshot-wb: broker started\n"
+STARTED = "ls-wb: broker started\n"
 
 
 class Shell:
     def __init__(self, root):
         self.root = root
-        self.env = {key: value for key, value in os.environ.items() if not key.startswith("HOOKSHOT_WB_")}
+        self.env = {key: value for key, value in os.environ.items() if not key.startswith("LS_WB_")}
         for key in ("PYTHONPATH", "PYTHONSTARTUP"):
             self.env.pop(key, None)
         self.env.update({
@@ -38,10 +38,10 @@ class Shell:
             "XDG_CONFIG_HOME": str(root / "xdg-config"),
             "XDG_STATE_HOME": str(root / "xdg-state"),
             "XDG_CACHE_HOME": str(root / "xdg-cache"),
-            "HOOKSHOT_WB_STATE_ROOT": str(root / "state"),
-            "HOOKSHOT_WB_READ_ROOTS": json.dumps([str(root)]),
-            "HOOKSHOT_WB_WRITE_ROOTS": json.dumps([str(root)]),
-            "HOOKSHOT_WB_DEPENDENCY_PYTHON": sys.executable,
+            "LS_WB_STATE_ROOT": str(root / "state"),
+            "LS_WB_READ_ROOTS": json.dumps([str(root)]),
+            "LS_WB_WRITE_ROOTS": json.dumps([str(root)]),
+            "LS_WB_DEPENDENCY_PYTHON": sys.executable,
         })
         (root / "home").mkdir()
 
@@ -109,7 +109,7 @@ def knowledge(shell):
             f"## {heading}\nSynthetic CLI guidance for {heading}.\n" for heading in headings))
     settings = shell.root / "knowledge.json"
     settings.write_text(json.dumps({"skills_dir": str(skills), "skill_names": list(registrations)}))
-    shell.env["HOOKSHOT_WB_KNOWLEDGE_CONFIG"] = str(settings)
+    shell.env["LS_WB_KNOWLEDGE_CONFIG"] = str(settings)
     return shell
 
 
@@ -140,15 +140,21 @@ def session(shell):
         "profiles": {"ordinary": {"debug": True}},
         "clone_root": str(root / "clones"),
     }))
-    shell.env.update({"HOOKSHOT_WB_HARNESS_DIR": str(root / "harness"),
-                      "HOOKSHOT_WB_GPU_GATE": str(root / "gate"),
-                      "HOOKSHOT_WB_SESSION_CATALOGUE": str(catalogue)})
+    shell.env.update({"LS_WB_HARNESS_DIR": str(root / "harness"),
+                      "LS_WB_GPU_GATE": str(root / "gate"),
+                      "LS_WB_SESSION_CATALOGUE": str(catalogue)})
     return shell
+
+
+def test_help_uses_ls_cli_identity(shell):
+    result = shell("--help")
+    assert result.returncode == 0 and result.stderr == ""
+    assert result.stdout.startswith("usage: ls-wb ")
 
 
 @pytest.mark.parametrize("profile", ["observe", "operate"])
 async def test_json_catalogue_matches_real_registration(shell, profile):
-    shell.env["HOOKSHOT_WB_PROFILE"] = profile
+    shell.env["LS_WB_PROFILE"] = profile
     deps = Deps(shell.config)
     async with Client(build_server(deps=deps)) as client:
         tools = {tool.name: tool for tool in await client.list_tools()}
@@ -177,7 +183,7 @@ def test_table_contains_broker_and_replacement_columns(shell):
     rows = {line.split()[0]: line for line in lines[1:]}
     assert "session_launch" in rows and "workbench_status" in rows
     for name in ("session_launch", "session_state", "workbench_status"):
-        spec = runtime.tool_spec(Config.from_env({**shell.env, "HOOKSHOT_WB_PROFILE": "operate"}), name)
+        spec = runtime.tool_spec(Config.from_env({**shell.env, "LS_WB_PROFILE": "operate"}), name)
         assert rows[name].endswith(spec.shell_route)
         assert rows[name].split()[4] == ("yes" if spec.requires_broker else "no")
     assert not paths(shell.config).socket.exists()
@@ -186,8 +192,8 @@ def test_table_contains_broker_and_replacement_columns(shell):
 def test_profile_override_preserves_other_configuration(shell):
     harness = shell.root / "registered-harness"
     harness.mkdir()
-    shell.env.update({"HOOKSHOT_WB_PROFILE": "operate", "HOOKSHOT_WB_EXTRA_TOOLS": "job_cancel",
-                      "HOOKSHOT_WB_HARNESS_DIR": str(harness)})
+    shell.env.update({"LS_WB_PROFILE": "operate", "LS_WB_EXTRA_TOOLS": "job_cancel",
+                      "LS_WB_HARNESS_DIR": str(harness)})
     rows = success(shell("--timeout", "10", "list", "--json", "--profile", "observe"))
     names = {row["name"] for row in rows}
     assert "job_cancel" in names and "session_launch" not in names
@@ -244,7 +250,7 @@ def test_unknown_tool_is_not_an_execution_interface(shell):
 
 
 async def test_registered_resource_is_passed_through(shell):
-    config = Config.from_env({**shell.env, "HOOKSHOT_WB_PROFILE": "operate"})
+    config = Config.from_env({**shell.env, "LS_WB_PROFILE": "operate"})
     expected = await runtime.one_shot(config, "read", name="workbench://tools")
     assert "result" in expected
     value = success(shell("read", "workbench://tools", "--profile", "operate"))
@@ -283,7 +289,7 @@ def test_missing_backend_remains_an_error_without_autostart(shell):
 
 
 def test_configuration_errors_are_sanitized(shell):
-    shell.env["HOOKSHOT_WB_READ_ROOTS"] = '["relative/private-secret"]'
+    shell.env["LS_WB_READ_ROOTS"] = '["relative/private-secret"]'
     error = failure(shell("list", "--json"), "invalid_argument")
     assert error == fail("invalid_argument", "configuration").envelope.model_dump()
 

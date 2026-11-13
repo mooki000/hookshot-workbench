@@ -1,11 +1,11 @@
 #!/bin/bash
-# Copy a save of the Hookshot save library into a fresh throwaway user folder for one run. Written 2026-11-10 (SaveLib).
+# Copy a save of the LS save library into a fresh throwaway user folder for one run. Written 2026-11-10 (SaveLib).
 #
 #   hs-save.sh <name> <target folder> [--voice <language>]
 #   hs-save.sh --list
 #
 #   <name>     an entry of /home/mooki/Games/.hookshot-harness/saves/ (its README.txt says what it is), or the path of
-#              any Hookshot user folder (one that holds save/<user id>/)
+#              any supported game user folder (one that holds save/<user id>/)
 #   <target>   the folder to make: it must not exist, or be one this script made before (then it is replaced)
 #   --voice    set the copy's Voice Language option (option.sav), e.g. pt-BR, ja, en-US, Portuguese_Brazil
 #              (tools/hs_make_save.py --voice; the library entry itself is never changed)
@@ -84,5 +84,5 @@ fi
 echo "$target"
 if [ -f "$src/README.txt" ]; then
     sed -n '1p' "$src/README.txt"
-    grep -m1 'Presses that continue' "$src/README.txt" || echo "  (not yet proven in Hookshot: see $src/README.txt)"
+    grep -m1 'Presses that continue' "$src/README.txt" || echo "  (not yet proven in LS: see $src/README.txt)"
 fi

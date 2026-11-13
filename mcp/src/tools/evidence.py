@@ -1,6 +1,7 @@
 """Logs, faults, registered numeric adapters and private evidence packages."""
 from typing import Annotated, Literal
 from pydantic import Field
+from src.game_literals import HS_GAME
 from src.models import Job
 from src.models.evidence import (AnalysisArgs, AnalyzerId, ArtifactId, BundleRequest, FrameWindow,
     Key, Label, LogPage, Pairing, PanelImage, PanelLayout, RunId, Signature)
@@ -59,7 +60,7 @@ def register(mcp, deps):
     async def evidence_scan_frames(capture_artifact_id: ArtifactId, idempotency_key: Key,
             detector: Literal["brightness-triplet-v1"] = "brightness-triplet-v1",
             frame_window: FrameWindow | None = None, wall_seconds: Wall = 480) -> Job:
-        artifact_input(deps, capture_artifact_id, "evidence_scan_frames", mimes={"application/x-hookshot-framelog"},
+        artifact_input(deps, capture_artifact_id, "evidence_scan_frames", mimes={HS_GAME["framelog_mime"]},
                        max_bytes=1024 * 1024 * 1024, verify=False)
         return await submit_evidence_job(deps, "evidence_scan_frames", {"capture_artifact_id": capture_artifact_id,
             "detector": detector, "frame_window": frame_window.model_dump() if frame_window else None},

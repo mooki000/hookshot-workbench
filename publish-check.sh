@@ -7,7 +7,7 @@
 #   4. private addresses
 #   6. words from a private list (when the list is present)
 # and, as lines to READ rather than a verdict, 5. what smells like facts read out of the game (coordinates, flag and
-# object names). A map name or a hash that Hookshot's own source or a public pull request already has is fine; a list of
+# object names). A map name or a hash that the game's own source or a public pull request already has is fine; a list of
 # places is not. The one exception is docs/oot/, the map of the game's lifted functions: addresses, names of our own and
 # what a function does in our own words (docs/oot/README.md, "What may go here"); it is not read for check 5, and it
 # still must hold no game file, no lifted code and nothing over 200 KB. Prints one line per check and ends with PASS or FAIL.
@@ -43,6 +43,12 @@ if [ -f .private/publish-forbidden.txt ]; then
     names=$(echo "$files" | grep -i -E -f .private/publish-forbidden.txt)
     [ -z "$words$names" ] && say OK "none of the private list's $(grep -c . .private/publish-forbidden.txt) words" || { say FAIL "words from the private list:"; { echo "$names"; echo "$words"; } | grep . | cut -c1-160 | sed 's/^/      /'; }
 else say SKIP "no private word list here"
+fi
+
+if "${HS_PYTHON:-python3}" -I -B "$here/name_policy.py"; then
+    say OK "retained external names match docs/names-kept.md"
+else
+    say FAIL "unlisted legacy name (or unreadable names policy)"
 fi
 
 [ "$fail" -eq 0 ] && echo PASS || echo FAIL

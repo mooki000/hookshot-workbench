@@ -1,21 +1,26 @@
-# Rules for every agent working on Hookshot here (written 2026-11-10; the main session keeps it current)
+# Rules for every agent working on LS or HS here (written 2026-11-10; the main session keeps it current)
 
 ## First: choose and use the skill
 
 Before investigating, building, testing or drafting, read `~/.agents/skills/hookshot-workbench/SKILL.md`, then
-the matching skills below. Use their existing tools rather than inventing another runner or parser.
+the matching published skill IDs below. Use their existing tools rather than inventing another runner or parser.
 
-| Task kind | Skill (`~/.agents/skills/<name>/SKILL.md`) | Tool to use |
+| Task kind | Published skill ID | Tool to use |
 |---|---|---|
-| Any Hookshot work; build/run/check | `hookshot-workbench` | `tools/deps-local.sh`, build slot, `hs-run.sh`, `hs-idle.sh` |
-| Issue survey, reproduction, reply | `hookshot-issue-triage` | `gh issue view --comments`; read attachments and `POSTED.md` |
-| PR/review/rebase/CI or tracker draft | `hookshot-pr-evidence` | `pr_overlap.py`, `hs-pr-ci.sh`, `hs-win-fixture-check.sh`, `hs-pr-check.sh` |
-| FPS, frame-time, stutter comparison | `hookshot-perf-compare` + `hookshot-regression-hunt` | `regress.py` held worker and `run_case.py`; A B A B in an authorized exclusive hold |
-| Regression, suspect/revert/bisect | `hookshot-regression-hunt` | `regress.py plan`, then authorized `hunt` |
-| Controller-free play, state, saves | `hookshot-scripted-play` | `scripts/hookshot_ctl.py`, `playthrough/hsap.py` (capability-selected) |
-| Nightly/rolling main testing | `hookshot-nightly-playtest` | existing `nightly/hs-nightly.py` watch; never create a second one |
-| Team updates / Discord reads or named messages | `hookshot-discord-updates` | project's `scripts/team_chat.py` in `main-tools`; Main alone posts |
-| Testing other people's PRs / request queue | `hookshot-pr-loop` | priority list; `scripts/test_requests.py` in `main-tools`; Main alone claims/renews/completes |
+| Any LS or HS work; build/run/check | `ls-workbench` | `tools/deps-local.sh`, build slot, `hs-run.sh`, `hs-idle.sh` |
+| Issue survey, reproduction, reply | `ls-issue-triage` | `gh issue view --comments`; read attachments and `POSTED.md` |
+| PR/review/rebase/CI or tracker draft | `ls-pr-evidence` | `pr_overlap.py`, `hs-pr-ci.sh`, `hs-win-fixture-check.sh`, `hs-pr-check.sh` |
+| FPS, frame-time, stutter comparison | `ls-perf-compare` + `ls-regression-hunt` | `regress.py` held worker and `run_case.py`; A B A B in an authorized exclusive hold |
+| Regression, suspect/revert/bisect | `ls-regression-hunt` | `regress.py plan`, then authorized `hunt` |
+| Controller-free play, state, saves | `ls-scripted-play` | `scripts/hookshot_ctl.py`, `playthrough/hsap.py` (capability-selected) |
+| Nightly/rolling main testing | `ls-nightly-playtest` | existing `nightly/hs-nightly.py` watch; never create a second one |
+| Team updates / Discord reads or named messages | `ls-discord-updates` | project's `scripts/team_chat.py` in `main-tools`; Main alone posts |
+| Testing other people's PRs / request queue | `ls-pr-loop` | priority list; `scripts/test_requests.py` in `main-tools`; Main alone claims/renews/completes |
+
+Published `ls-<suffix>` skills live in `skills/ls-<suffix>/` and use `skill://ls-<suffix>` logical references.
+The host cutover is deferred: their current live source remains `~/.agents/skills/hookshot-<suffix>/SKILL.md`.
+Publication maps those live folders to the new IDs; it does not rename the live folders. Keep every explicit live
+command path below. This brief does not authorize or claim any sync, relocation, installation or cutover.
 
 Every report has a **Skills and tools** section: names read, tools actually used, and exact file/line corrections
 for missing or stale guidance. A missing skill declaration means usage is unrecorded, not proof it was ignored.
@@ -27,7 +32,8 @@ withdrawn, even if `window-ok` remains on disk. A swapchain-only question is unt
 
 ## The project and who we work for
 
-- **Hookshot** (`NotRexed/Hookshot`, GPL-3.0-or-later): a static recompilation of the Switch 2 remake of *The Legend of
+- **LS**, the continuation at `https://git.magicbean.dev/MagicBeanDev/Longshot`, follows **HS**
+  (`NotRexed/Hookshot`, GPL-3.0-or-later): a static recompilation of the Switch 2 remake of *The Legend of
   Zelda: Ocarina of Time* for Windows and Linux. The user (GitHub `mooki000`) contributes to it; his goal is the best
   experience for himself and other Linux players (his machine: Arch, Hyprland, i9-13900K, RTX 4090 with NVIDIA's
   driver, an Intel UHD 770 beside it, a 1920x1080 monitor at 60 Hz), and features: co-op and a randomizer first.
@@ -46,11 +52,11 @@ Their rules bind you as they bind everyone. The ones that matter most:
    `hookshot_log.txt` are fine. Game-derived data we make (flag names, coordinates, routes, world models, logic read from
    the game's files) stays local under the harness or the reports' files folders; if in doubt, it is game data.
 2. **Licence: only code we may license under GPL-3.0-or-later.** The other port's repository puts everything added after its
-   base import under "all rights reserved": **never copy a line from the other port's repository into Hookshot**, and never
+   base import under "all rights reserved": **never copy a line from the other port's repository into LS or HS**, and never
    paste decompiled game code. The user's own earlier work (files he added in his fork that contain nothing of
    the other port's) may be brought over only when the file is listed as wholly his in
    `/home/mooki/Code/hookshot-wt/reports/OURS.md` (the inventory; if it does not exist yet or does not list the file,
-   re-implement from the idea against Hookshot's code; do not copy).
+   re-implement from the idea against LS or HS's code; do not copy).
 3. **One topic per pull request; a branch from current `main`; the cause before the fix; a game-free test that fails
    without the change** (many tests in `tests/` cut functions out of the source by their text: run
    `python -I -B tests/run_all.py`, all of it, and update a broken check in the same change). CI must pass.
@@ -73,7 +79,7 @@ Their rules bind you as they bind everyone. The ones that matter most:
    agents never read/copy the session under `~/.config/hookshot/`. Workers hand Main unposted drafts.
    Discord's browser is for reading and messages the user requests by name, not routine team updates.
    Test requests use `scripts/test_requests.py` and `docs/test-requests.md`; this PC may take fitting work by
-   `hookshot-pr-loop`'s priority list, but only Main claims, renews and marks done. Results on others' PRs go out
+   `ls-pr-loop`'s priority list, but only Main claims, renews and marks done. Results on others' PRs go out
    after Main's own numbers/pictures/thread check; opinions, disagreements and design questions go to the user first.
 7. Hardware tiers: a change must not break NVIDIA RTX and AMD RX on Windows and Linux, or the Steam Deck, to help
    something else. Say what you could not test (Windows, AMD, real input devices).
@@ -87,7 +93,7 @@ Their rules bind you as they bind everyone. The ones that matter most:
 - **Paths**: clone `/home/mooki/Code/Hookshot` (remotes `origin` = NotRexed, `fork` = mooki000); your own worktrees
   under `/home/mooki/Code/hookshot-wt/<name>` (`git -C /home/mooki/Code/Hookshot worktree add ...`); reports and their
   files under `/home/mooki/Code/hookshot-wt/reports/`; built games under `/home/mooki/Games/.hookshot-h-<name>`; harness
-  scripts under `/home/mooki/Games/.hookshot-harness/`. The required `hookshot-workbench` skill names the build/run tools.
+  scripts under `/home/mooki/Games/.hookshot-harness/`. The required `ls-workbench` skill names the build/run tools.
 - **The GPU is shared and the user's desktop runs on it.** Every program that creates a Vulkan or GL device goes
   through a gate, window or not, headless or not: the RTX 4090 through `/home/mooki/Games/hs-gpu-slot <command>`
   (add `--exclusive` only for frame-rate measurements and only with the main session's word; `--priority` only when
@@ -129,7 +135,7 @@ Their rules bind you as they bind everyone. The ones that matter most:
   by that documentation or an old permission file. Never use it without a new explicit grant.
 - **Which kernel lines stop a run.** Stop every run of yours and tell the main session at any `NVRM: Xid` line, any
   `kmemsysDoCacheOp` line, or any NVRM line you do not know. Do NOT stop for `NVRM: memMap_IMPL: CPU mapping not
-  supported for addressSpace: 0x1`: Hookshot's Linux path tries to hand each new block of the game's memory to the
+  supported for addressSpace: 0x1`: HS's Linux path tries to hand each new block of the game's memory to the
   driver as a dma-buf, this driver refuses every one (the game falls back by itself), and the kernel prints the line
   for some of the refusals: usually once at the start, sometimes again later in a run (113 of them last night, no
   fault among them). Count them in your summaries; `hs-run.sh` prints the count as `nvrm=`.
@@ -141,7 +147,7 @@ Their rules bind you as they bind everyone. The ones that matter most:
   run they fall into fails in any way, or when one run has more than three such events.
 - **Never run with a synchronisation or safety mechanism switched off**, and never write through a mapping of video
   memory from a program of your own, without the main session's word.
-- **Tests that crash on purpose must not leave core dumps.** Hookshot's checks crash fixture programs deliberately
+- **Tests that crash on purpose must not leave core dumps.** HS's checks crash fixture programs deliberately
   (`tests/test_linux_driver_fault_guard.py`, `tests/test_recorder_sync.py`'s broken variants, and any sanitizer,
   fuzz or mutation run of your own that ends in a signal). Each core dump raises a "process crashed" notification on
   the user's desktop: 107 of them in the night of 2026-11-10. Run `tests/run_all.py` only through
@@ -175,7 +181,7 @@ Their rules bind you as they bind everyone. The ones that matter most:
 ## Pull requests: the user's standard (2026-11-11)
 
 The user wants every pull request at the level of his own earlier ones for the other port: "lots of detail and images".
-`skill://hookshot-pr-evidence` has the form and the checklist; read it before you write a body. In short:
+`skill://ls-pr-evidence` has the form and the checklist; read it before you write a body. In short:
 
 - **Collect the evidence while you work**, under `reports/<Topic>-files/`: the environment (system, GPU and driver, base
   and head commit, date, load), the test's lines on the branch and against main's source, the whole suite's totals
@@ -194,7 +200,7 @@ The user wants every pull request at the level of his own earlier ones for the o
   was tested (result lines, tables, pictures with captions), Not tested, Risks, Overlaps
   (`/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/pr_overlap.py --branch <name>`, hunks read), Questions.
 - **Pictures**: several frames as one labelled picture with
-  `/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh`; look at it; name it `hookshot-<topic>-<what>.jpg`
+  `/home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh`; look at it; name it `ls-<topic>-<what>.jpg`
   and tell the main session, which uploads it.
 - **A claim issue only while there is no pull request yet** (the user's word of 2026-11-11, after the maintainer
   closed four of ours as duplicates of their pull requests): search first; say in your hand-off which existing issue
@@ -205,10 +211,14 @@ The user wants every pull request at the level of his own earlier ones for the o
 
 ## The public repository (since 2026-11-11)
 
-The user shares his Hookshot tools and skills with other contributors in `mooki000/hookshot-workbench` (public, MIT;
-checkout `/home/mooki/Code/hookshot-workbench`). It holds the published `hookshot-*` skills, this brief, the run
-wrapper and helpers, gates, play drivers, regression and nightly tools. `sync-from-live.sh` lists the harness files
-and copies the skill folders; `publish-check.sh` guards publication. Only the main session commits and pushes.
+The user shares his LS workbench tools and skills with other contributors in `mooki000/ls-workbench` (public, MIT;
+checkout `/home/mooki/Code/hookshot-workbench`). The local checkout location is unchanged. It holds the published `ls-*`
+skills, this brief, the run wrapper and helpers, gates, play drivers, regression and nightly tools. Publication maps
+live `hookshot-*` skill folders to published `ls-*` IDs; `publish.py` lists the copied files and
+`sync-from-live.sh` invokes it and `publish-check.sh`. Only the main session syncs, commits and pushes when explicitly delegated.
+The MCP identity is `ls-workbench`, its CLI is `ls-wb`, and workbench configuration uses `LS_WB_*` and
+`LS_DISCORD_CONFIG`. External game switches, runtime/source filenames, repository URLs and existing PC paths stay
+unchanged. The host folders and configuration have not been cut over by this source rename.
 
 - **A skill, this brief and every listed script are public text.** Write in them only what a stranger may read: the
   method, commands, measurements, traps. Nothing about the game's content (coordinates, flag, step and object names,

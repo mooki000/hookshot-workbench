@@ -104,7 +104,7 @@ def arm(config, calendar=None):
     if not config.get('timer_enabled', False):
         raise RuntimeError('timer is disabled; enabling it requires the user’s explicit word')
     calendar = calendar or capture(['date', '-d', 'tomorrow ' + config['timer_time'], '+%Y-%m-%d %H:%M:%S']).strip()
-    unit = 'hookshot-nightly-' + slug(stamp('+%Y%m%d-%H%M%S'))
+    unit = 'ls-nightly-' + slug(stamp('+%Y%m%d-%H%M%S'))
     argv = ['systemd-run', '--user', '--unit=' + unit, '--on-calendar=' + calendar,
             '--timer-property=AccuracySec=60s', '--collect', config['python'], '-I', '-B',
             str(Path(__file__).resolve()), 'run', '--rearm']

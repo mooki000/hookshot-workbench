@@ -1,6 +1,6 @@
 #!/bin/bash
 # hs-pr-check.sh <branch> [<title file>] [--imported <commit>=<original>]... [--imported-files <commit>=<source>]... :
-# the mechanical checks before a Hookshot branch is pushed and opened as a pull request (skill hookshot-pr-evidence,
+# the mechanical checks before an LS branch is pushed and opened as a pull request (skill ls-pr-evidence,
 # "Before any push"). Prints one line per check and ends with PASS or FAIL. It reads only; it pushes nothing. The diff
 # itself is still read by the main session.
 # --imported names one commit of the branch that carries another contributor's commit unchanged (a cherry-pick). It is

@@ -128,12 +128,12 @@ class Sandbox:
         self.env = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL", "TZ") if key in os.environ}
         self.env.update(HOME=str(root / "home"), XDG_STATE_HOME=str(root / "xdg-state"),
             XDG_CACHE_HOME=str(root / "cache"), XDG_CONFIG_HOME=str(root / "home-config"),
-            PYTHONDONTWRITEBYTECODE="1", HOOKSHOT_WB_STATE_ROOT=str(root / "state"),
-            HOOKSHOT_WB_READ_ROOTS=json.dumps([str(root)]), HOOKSHOT_WB_WRITE_ROOTS=json.dumps([str(root)]),
-            HOOKSHOT_WB_PROTECTED_ROOTS=json.dumps([str(root / "protected")]),
-            HOOKSHOT_WB_HARNESS_DIR=str(root / "harness"), HOOKSHOT_WB_GPU_GATE=str(root / "gate"),
-            HOOKSHOT_WB_DEPENDENCY_PYTHON=sys.executable, HOOKSHOT_WB_SESSION_CATALOGUE=str(root / "catalogue.json"),
-            HOOKSHOT_WB_PROFILE="operate", HOOKSHOT_WB_BROKER_IDLE_SECONDS="60")
+            PYTHONDONTWRITEBYTECODE="1", LS_WB_STATE_ROOT=str(root / "state"),
+            LS_WB_READ_ROOTS=json.dumps([str(root)]), LS_WB_WRITE_ROOTS=json.dumps([str(root)]),
+            LS_WB_PROTECTED_ROOTS=json.dumps([str(root / "protected")]),
+            LS_WB_HARNESS_DIR=str(root / "harness"), LS_WB_GPU_GATE=str(root / "gate"),
+            LS_WB_DEPENDENCY_PYTHON=sys.executable, LS_WB_SESSION_CATALOGUE=str(root / "catalogue.json"),
+            LS_WB_PROFILE="operate", LS_WB_BROKER_IDLE_SECONDS="60")
         self.config = Config.from_env(self.env)
         self.registry = Registry(self.config.state_root)
         self.registry.open()
@@ -198,7 +198,7 @@ class Sandbox:
         code, stdout, stderr = await self.cli_raw("call", tool, "--args", json.dumps(arguments),
             "--profile", profile, "--timeout", "15")
         assert code == 0, stderr
-        assert not stderr or stderr.strip() == "hookshot-wb: broker started"
+        assert not stderr or stderr.strip() == "ls-wb: broker started"
         return json.loads(stdout)
 
     async def call(self, tool, arguments=None, **kwargs):
@@ -420,7 +420,7 @@ async def test_broker_supports_long_state_root_without_short_path_alias(sandbox)
     sandbox.registry.close()
     root = sandbox.root / ("long-state-" + "a" * 100) / ("nested-" + "b" * 100)
     sandbox.config = replace(sandbox.config, state_root=root)
-    sandbox.env["HOOKSHOT_WB_STATE_ROOT"] = str(root)
+    sandbox.env["LS_WB_STATE_ROOT"] = str(root)
     sandbox.registry = Registry(root)
     sandbox.registry.open()
     assert len(os.fsencode(sandbox.paths.socket)) >= 108

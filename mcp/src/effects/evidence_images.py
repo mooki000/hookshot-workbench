@@ -5,6 +5,7 @@ import re
 import shutil
 import struct
 import subprocess
+from src.game_literals import HS_GAME
 from src.effects.evidence_common import (IMAGE_MIMES, artifact_input, backend, configured,
     load_backend, producer, write_new)
 
@@ -74,7 +75,7 @@ def evidence_scan_frames_impl(deps, capture_artifact_id, frame_window, detector,
     script = backend(deps, "scripts/framelog.py", tool, checkout=True)
     python = configured(deps, "dependency_python", tool)
     art, path = artifact_input(deps, capture_artifact_id, tool,
-        mimes={"application/x-hookshot-framelog"}, max_bytes=1024 * 1024 * 1024)
+        mimes={HS_GAME["framelog_mime"]}, max_bytes=1024 * 1024 * 1024)
     if detector != "brightness-triplet-v1":
         raise deps.error("invalid_argument", tool)
     parser = load_backend(script)
