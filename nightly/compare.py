@@ -5,8 +5,12 @@ import statistics
 
 
 def signature(line):
-    """Keep words/error identity; strip volatile timestamps, addresses, counters and paths."""
+    """Keep error words; strip timestamps, addresses, counters and simple POSIX paths.
+
+    Path tokens are absolute, ASCII and space-free; Windows paths are not handled.
+    """
     line = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', line)
+    line = re.sub(r'(?<![\w/\\:.-])/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*[A-Za-z0-9_-]', '<path>', line)
     line = re.sub(r'\b(?:0x[0-9a-f]+|[0-9a-f]{8,})\b', '<addr>', line, flags=re.I)
     line = re.sub(r'(?<![\w])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?', '<n>', line)
     return re.sub(r'\s+', ' ', line).strip()
