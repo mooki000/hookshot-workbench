@@ -161,8 +161,13 @@ def build_env(checkout, suffix_values):
                     reader = ast.unparse(node.func)
                     if reader in ('os.environ.get', 'os.getenv', 'environ.get', 'env_on', 'env_int'):
                         value = node.args[0]
-                elif isinstance(node, ast.Subscript) and ast.unparse(node.value) in ('os.environ', 'environ'):
+                elif (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load)
+                      and ast.unparse(node.value) in ('os.environ', 'environ')):
                     value = node.slice
+                elif (isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Subscript)
+                      and ast.unparse(node.target.value) in ('os.environ', 'environ')):
+                    # An augmented assignment reads its target despite its Store context.
+                    value = node.target.slice
                 if isinstance(value, ast.Constant) and isinstance(value.value, str):
                     if re.fullmatch(r'(?:HOOKSHOT|LONGSHOT)_[A-Z0-9_]+', value.value):
                         keys.add(value.value)
