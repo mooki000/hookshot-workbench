@@ -158,6 +158,9 @@ before you rely on them. `hs-window.py` speaks to Hyprland only.
 The skills are plain Markdown with a short header. Agent tools that read `~/.agents/skills/<name>/SKILL.md` (or
 Claude Code's `~/.claude/skills/`) pick them up as they are; a person can read them as the manual.
 
+Starting on a Mac: [docs/handoff-macos.md](docs/handoff-macos.md) is the hand-over for an agent there (what LS needs
+for macOS, which parts of this workbench carry over, and what to ask me for).
+
 ### Published identity and deferred host cutover
 
 The published workbench identity is `ls-workbench` (LS in prose); its MCP CLI is `ls-wb` and its configuration
