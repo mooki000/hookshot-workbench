@@ -1,5 +1,6 @@
 """Readers for preserved traces and sampled process data; unsupported sources stay missing."""
-from collections import Counter, deque
+from collections import Counter
+from fractions import Fraction
 from pathlib import Path
 import csv
 import importlib.util
@@ -34,17 +35,30 @@ def frame_stats(rows):
         result[f'over_{limit:g}_longest_ms'] = max(over, default=0)
     # Fewest completions in a rolling second; a stall over one second has a zero-frame
     # window before it ends. This is not scanout or a GPU-completion measurement.
-    spans = deque()
     worst_fps, worst_start = math.inf, None
-    first = rows[0][0] - rows[0][1] / 1000
-    for t, ms in rows:
-        spans.append(t)
-        if ms >= 1000:
-            worst_fps, worst_start = 0, t - 1
-        while spans and spans[0] <= t - 1:
-            spans.popleft()
-        if t - first >= 1 and len(spans) < worst_fps:
-            worst_fps, worst_start = len(spans), t - 1
+    first = Fraction(rows[0][0]) - Fraction(rows[0][1]) / 1000
+    # Count at the float location we can return, rounded into the support.
+    # If no float start fits, retain the exact first window (location is lossy).
+    first_float = float(first)
+    if first_float < first:
+        first_float = math.nextafter(first_float, math.inf)
+    if Fraction(first_float) + 1 <= rows[-1][0]:
+        first = Fraction(first_float)
+    left = right = 0
+    # Counts can decrease only when the open left edge reaches a completion.
+    # Also inspect the first full window; both indices advance at most n times.
+    for i in range(len(rows) + 1):
+        start = first if i == 0 else Fraction(rows[i - 1][0])
+        # Do not round start + 1: distinct received-float boundaries can merge.
+        end = start + 1
+        if end > rows[-1][0]:
+            break
+        while left < len(rows) and rows[left][0] <= start:
+            left += 1
+        while right < len(rows) and rows[right][0] <= end:
+            right += 1
+        if right - left < worst_fps:
+            worst_fps, worst_start = right - left, float(start)
     result['worst_second_fps'] = worst_fps if worst_start is not None else None
     result['worst_second_start_s'] = worst_start
     return result
