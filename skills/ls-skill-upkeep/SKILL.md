@@ -58,8 +58,12 @@ the main session changes.
    the skill from the catalogue, the steps worked as written, and it needed nothing the skill did not say. Fix and
    repeat with a new worker; a worker that has already read the old text proves nothing.
 7. **Publish.** Add a new skill to `SKILL_MAP` in the workbench's `publish.py` (an identity entry when its live name
-   already starts with `ls-`), run `sync-from-live.sh`, read `publish-check.sh`'s output and the diff, commit and push.
-   Nothing game-derived goes into a skill: commands, paths and procedure only.
+   already starts with `ls-`), then copy your change into the repository. **Until this PC's cutover has been done**
+   (the live skill folders still carry their old names), do NOT run `sync-from-live.sh`: it copies every live file
+   over the repository's renamed text and only then finds that the names guard fails. Make the same change by hand in
+   the repository's copy of the skill instead, run `publish-check.sh` and the tests, read the diff, commit and push.
+   After the cutover the sync is the way again. Nothing game-derived goes into a skill: commands, paths and procedure
+   only.
 
 ## What the check cannot see
 
