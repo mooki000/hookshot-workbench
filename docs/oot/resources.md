@@ -72,6 +72,7 @@ with the dictionary pack), [master-quest.md](master-quest.md) (the mounts the ga
 | `f_801b4090` | `ResourceHandle_Release` | Lets a handle go (159 callers): marks it, drops the reference count at `+0x94` of the resource's record (the records are 0x398 bytes, in `ares::System`'s `+0x440`, `+0x438` of them), and when it reaches 0 pushes the record's index on a lock-free ring (`+0x4d0` to `+0x4e8`) for unloading | read |
 | `f_836d80e0` | `Path_Extension` | The text after a path's last "." (the empty string when there is none) | read |
 | `f_836d8180` | `Path_AddCompressionExt` | Appends ".szs" (kind 1) or ".zs" (kind 2) to a path string, within its capacity | read |
+| `f_83bb3eb0` | `GeneralFormatAsync_Init` | Creates the resource system's `GeneralFormatAsync_` work pool: priority-24 workers, one per selected core among 0 to 5. What its jobs do to a resource is not worked out | read |
 
 `f_8002f220` (`Resource_Request`, [maps.md](maps.md)) is the request call most loaders use; `f_80036c20` turns a layout's
 work path into its RomFS path. The terrain's resources have their own manager and prefetch hook

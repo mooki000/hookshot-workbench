@@ -2,7 +2,8 @@
 """Look up and check the map of the game's lifted functions (the pages beside this script).
 
     fnmap.py find f_803edf70        the row of one function or data address, with its page
-    fnmap.py find "time of day"     rows whose name or text has the words (first 20)
+    fnmap.py find "time of day"     rows whose name or text has the words (first 20); with no such row,
+                                    the lines of the pages that have them (a thread or class name in the prose)
     fnmap.py check [--repo DIR] [--rev REV]
                                     the pages against themselves and against the port's code at REV
                                     (DIR: the port's clone, default $LS_REPO or the current folder; REV: default HEAD)
@@ -62,12 +63,15 @@ def find(query):
                 shown += 1
                 if shown == 20:
                     return 0
-    if exact and not shown:   # (no row of its own: say where it is mentioned)
+    if not shown:   # (no row: say where the pages mention it, in a row of another function or in the prose)
         for page in pages():
             for number, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1):
-                if exact.group(3).lower() in line.lower():
-                    print("mentioned, no row: %s:%d" % (page.relative_to(ROOT), number))
+                low = line.lower()
+                if (exact.group(3).lower() in low) if exact else all(w in low for w in words):
+                    print("mentioned, no row: %s:%d\n  %s" % (page.relative_to(ROOT), number, line.strip()[:240]))
                     shown += 1
+                    if shown == 20:
+                        return 0
     if not shown:
         print("nothing for %r" % query)
     return 0 if shown else 1
