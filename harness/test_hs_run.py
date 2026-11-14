@@ -35,6 +35,9 @@ class HarnessExitTests(unittest.TestCase):
         text = (SOURCE / 'harness/hs-run.sh').read_text()
         self.wrapper.write_text(text.replace('/home/mooki', str(self.home)))
         self.wrapper.chmod(0o700)
+        # Synthetic dependency boundary: never read the real kernel journal.
+        (self.harness / 'regress').mkdir()
+        (self.harness / 'regress/run_case.py').write_text("def kernel_lines(start, end, intel=False):\n    return '', {'kernel_errors': 0, 'no_memory_events': 0, 'no_memory_lines': 0, 'nvrm_lines': 0, 'kernel_status': 'SYNTHETIC-no-journal'}\n")
         self.executable(self.bin / 'journalctl', '#!/bin/sh\n# SYNTHETIC: no host journal read\nexit 0\n')
         self.executable(self.bin / 'systemd-run', '#!/bin/sh\n# SYNTHETIC deny: no service or scope access\nexit 99\n')
         self.executable(self.copy / 'hookshot', '#!/bin/sh\n# SYNTHETIC shell double, no game or GPU\nexit 23\n')
@@ -70,6 +73,7 @@ class HarnessExitTests(unittest.TestCase):
 R=${@: -1}
 printf '23\\n' > "$R/exit.txt"
 printf '2026-01-01 00:00:00\\n' > "$R/start.txt"
+printf '2026-01-01 00:00:01\\n' > "$R/end.txt"
 printf '0.0\\n' > "$R/wall.txt"
 printf '0 0 0\\n' > "$R/load-before.txt"
 printf '0 0 0\\n' > "$R/load-after.txt"
