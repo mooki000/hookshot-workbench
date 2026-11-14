@@ -108,6 +108,8 @@ class SignaturePathTests(unittest.TestCase):
             ('/tmp/owned-one/', '<tmp>/'),
             ('/tmp/owned-one', '<tmp>'),
             ('/tmp/owned-one-other/cache.bin', '/tmp/owned-one-other/cache.bin'),
+            ('/tmp/owned-one:other/cache.bin', '/tmp/owned-one:other/cache.bin'),
+            ('/tmp/owned-one,other/cache.bin', '/tmp/owned-one,other/cache.bin'),
             ('/tmp/owned-one.more/cache.bin', '/tmp/owned-one.more/cache.bin'),
             ('/home/tester-other/cache.bin', '/home/tester-other/cache.bin'),
             ('/unknown/root/cache.bin', '/unknown/root/cache.bin'),

@@ -20,7 +20,7 @@ def signature(line, *, roots=None):
                 if str(path).startswith('/') and str(path).strip('/')}
     if prefixes:
         pattern = (r"""(?<!\S)((?:[A-Za-z_]\w*=)?[('"[{]*)(%s)"""
-                   r"""(?=/|$|[\s'")\]},;:!?]|\.(?:\s|$))""") % '|'.join(
+                   r"""(?=/|$|[\s'"]|[)\]},;:!?]+(?=\s|$|['"])|\.(?:\s|$))""") % '|'.join(
                        re.escape(path) for path in sorted(prefixes, key=len, reverse=True))
         line = re.sub(pattern, lambda m: m[1] + '<' + prefixes[m[2]] + '>', line)
     tokens = re.findall(r"""(?:[^\s"']|"[^"\n]*"|'[^'\n]*'|["'])+""", line)
