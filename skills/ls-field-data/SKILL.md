@@ -45,6 +45,11 @@ python3 "$F" query 'PROMQL'                    # anything else; add --json to th
 The server wants a sign-in through Discord. **That approval is the user's:** `python3 "$F" login` prints a link, the
 user opens and approves it, and the token is kept in a private file (mode 600) outside every repository. Never ask a
 worker to sign in, never print or copy the token, and if the script says the sign-in expired, tell the main session.
+The script renews that token file by itself when it has run out; it changes nothing else anywhere.
+
+**No shell and no MCP tool** (a read-only worker)? Do not try the server yourself: it answers 401. The crash half is
+public: read the crash issue's comments on the forge. For the performance half ask the main session to run the
+command above with `--json` and hand you the output; say exactly which command.
 
 ## 2. Read it correctly
 
@@ -52,11 +57,18 @@ worker to sign in, never print or copy the token, and if the script says the sig
   metric returns nothing. Always wrap: `increase(<metric>{...}[7d])` (what the dashboards do) or
   `last_over_time(<metric>{...}[30d])`. Every metric name starts with the game's prefix, `longshot_`.
 - **Counts are estimates between samples** and can be off by one; a signature seen once may show 0 by `increase`.
-  The script's `reports` column is the counter itself; the crash comment says "seen N times" and is the reference.
+  `last_over_time` gives the counter as kept by the relay, which is not "events inside the range" and can be lower
+  than the truth after a relay restart. The crash comment says "seen N times" and is the reference.
+- **A signature includes the version.** The same crash on three builds is three signatures. To count a crash across
+  versions, group by exception and place (`code`, `where`) and say that you did. Reports are not players: three
+  reports can be one person three times.
 - **Release builds only by default.** A crash from a local or modified build is marked `[not a release]` on the crash
   issue and is its owner's business unless a release shows it too. Say which you counted.
 - **Look at the session count before any performance number.** One card on one map may be one player's evening.
   Report sessions and hours beside every fps, low or hitch figure; below about ten sessions call it an anecdote.
+  Sessions are not players, and per-map sessions must not be added up: one session visits several maps.
+- **"1% low" here is not the local readers' 1% low.** It is one over the 99th-percentile frame time, estimated from
+  histogram buckets; the workbench's own readers average the slowest 1% of frames. Never put the two in one column.
 - **A hitch** is a frame over twice its target, put down to what it waited on most: `game_cpu`, `gpu_bound`,
   `pipeline_wait`, `shader_translate`, `texture_upload`, `readback`, `memsync`, `pace`, `other`. Frame time is split
   into `game`, `render`, `gpu_wait`, `pace`. These are the game's own attributions, not a profile.

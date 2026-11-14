@@ -213,14 +213,16 @@ def selector(a):
 
 def crash_links():
     """signature -> link to its comment on the crash issue (public, no sign-in). Empty if the forge cannot be read."""
-    links, page = {}, 1
+    links, page, seen = {}, 1, set()
     while page < 40:
         code, _, text = http_text("%s/issues/%d/comments?limit=50&page=%d" % (FORGE_API, CRASH_ISSUE, page))
         if code != 200:
             break
         batch = json.loads(text)
-        if not batch:
+        fresh = [c for c in batch if c.get("id") not in seen]
+        if not fresh:  # an empty page, or the forge repeating the last page
             break
+        seen.update(c.get("id") for c in fresh)
         for c in batch:
             head = (c.get("body") or "")[:600]
             for word in head.replace("`", " ").split():

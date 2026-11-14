@@ -100,8 +100,14 @@ split, `--all-builds` to include builds that are not releases.
 
 - **An instant query of a bare metric is empty.** Samples exist only when a report arrived. Use `increase(...[range])`
   or `last_over_time(...[range])`.
-- **`increase` undercounts a counter that was born in the range**: a signature reported once can read 0. The crash
-  comment's "seen N times" is the reference; the script shows the counter beside the estimate.
+- **`increase` undercounts a counter that was born in the range**: a signature reported once can read 0. And
+  `last_over_time` gives the counter as the relay keeps it, which is not "events inside the range" and restarts with
+  the relay. The crash comment's "seen N times" is the reference; the script shows the counter beside the estimate.
+- **A crash signature includes the version**, so one crash on three builds is three signatures: group by `code` and
+  `where` to count it across versions. Reports are not players, and neither are sessions; per-map sessions must not
+  be added up, since one session visits several maps.
+- **The "1% low" is one over the 99th-percentile frame time**, estimated from histogram buckets. The workbench's own
+  readers average the slowest 1 % of frames instead; the two are not comparable.
 - **The dashboards show release builds by default.** Local and modified builds are there too (`release="false"`),
   marked `[not a release]` on the crash issue.
 - **Small samples.** Always read sessions and hours beside a performance figure. The dashboard's "worst combinations"
