@@ -249,7 +249,8 @@ class Run:
             fields = {'copy.txt': str(self.copy), 'seconds.txt': str(seconds), 'input.txt': '',
                       'memmax': '', 'env-file.txt': '# empty: scenario environment only'}
             for name, value in fields.items():
-                (self.run / name).write_text(value + '\n')
+                # hs-run tests memmax with -s: even a newline requests a memory scope.
+                (self.run / name).write_text(value if name == 'memmax' else value + '\n')
             extras = ['HOS_CONTROL=' + str(sock), 'HOS_INPUT_EXCLUSIVE=1', 'RX_VK_SHOT_EVERY=600']
             extras += [str(k) + '=' + str(v) for k, v in self.spec.get('settings', {}).items()]
             (self.run / 'extra-env.txt').write_text('\n'.join(extras) + '\n')
