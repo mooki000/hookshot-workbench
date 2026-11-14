@@ -30,6 +30,7 @@ the scripts were written by them under those rules, then run and checked here. T
 | `skills/ls-pr-loop` | The existing GitHub-backed request queue, ownership, replies and verified evidence carry | `SKILL.md` |
 | `skills/ls-function-map` | Look a game function, structure or subsystem up in `docs/oot/` before reading lifted code; how far to trust a row; how to hand back a row for what was worked out | `SKILL.md` |
 | `skills/ls-skill-upkeep` | Keeping the skills true: how an agent reports a skill that was wrong, missing or misleading, the mechanical check, when a new skill is worth it, testing a change with a blank worker | `SKILL.md`, `check_skills.py` |
+| `skills/ls-field-data` | What players' games sent in: crash reports and performance summaries through the team's Grafana MCP server; how to read them and how to use them in triage, test choice and evidence | `SKILL.md`, `scripts/ls_field.py`, `docs/field-data.md` |
 | `harness/` | Run/check helpers, shared runtime-name selection and local commit porting | `hs-run.sh`, `hs_names.py`, `ls-port.py` |
 | `gates/` | Queues that let many test runs share one GPU and one CPU without hurting each other or the desktop | `hs-gpu-slot` |
 | `play/` | Step drivers that play on a running game: one for the control bridge's state samples, one for older builds with the state file; the driver is chosen explicitly | `hsap.py`, `hsap_file.py` |
@@ -165,11 +166,11 @@ for macOS, which parts of this workbench carry over, and what to ask me for).
 
 The published workbench identity is `ls-workbench` (LS in prose); its MCP CLI is `ls-wb` and its configuration
 variables use `LS_WB_*`. The Discord helper's override is `LS_DISCORD_CONFIG`; the fixture compiler override is
-`LS_MINGW`. These are workbench names, not game switches. The twelve published skills above use `ls-<suffix>` in
+`LS_MINGW`. These are workbench names, not game switches. The thirteen published skills above use `ls-<suffix>` in
 their directory and frontmatter `name`, with logical references such as `skill://ls-workbench`.
 
 Publication maps ten existing live `~/.agents/skills/hookshot-<suffix>/` folders to `skills/ls-<suffix>/`;
-`ls-function-map` and `ls-skill-upkeep` are identity entries: their live and published names are already the same.
+`ls-function-map`, `ls-skill-upkeep` and `ls-field-data` are identity entries: their live and published names are already the same.
 The live folders have **not** been renamed: absolute and home-relative `.agents/skills/hookshot-*` command paths
 remain intentional until a separately authorized host cutover. This repository change does not run publication,
 sync, relocation or cutover, install the renamed MCP entry point, or change live configuration.

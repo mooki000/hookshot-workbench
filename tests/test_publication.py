@@ -33,9 +33,9 @@ def stage(root):
 
 class PublicationTests(unittest.TestCase):
     def test_explicit_skill_map_and_logical_cross_references(self):
-        self.assertEqual(len(publish.SKILL_MAP), 12)
+        self.assertEqual(len(publish.SKILL_MAP), 13)
         self.assertEqual({live for live, public in publish.SKILL_MAP.items() if live == public},
-                         {'ls-function-map', 'ls-skill-upkeep'})
+                         {'ls-function-map', 'ls-skill-upkeep', 'ls-field-data'})
         for live, public in publish.SKILL_MAP.items():
             original = f'name: {live}\nRead `{live}` and skill://{live}.\nSee skills/{live}/SKILL.md.\n'
             expected = f'name: {public}\nRead `{public}` and skill://{public}.\nSee skills/{public}/SKILL.md.\n'
@@ -89,7 +89,7 @@ class PublicationTests(unittest.TestCase):
             with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(root)}):
                 pairs = publish.files()
             destinations = {str(destination) for _, destination in pairs}
-            self.assertEqual(len(pairs), 59)
+            self.assertEqual(len(pairs), 60)
             self.assertIn('harness/ls-port.py', destinations)
             self.assertIn('regress/test_runtime_names.py', destinations)
             self.assertIn('nightly/test_runtime_names.py', destinations)

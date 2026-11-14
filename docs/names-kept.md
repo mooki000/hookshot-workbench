@@ -27,7 +27,7 @@ existing game-branch prefix. `publish.py` owns the explicit live-to-public table
 owns the deferred host paths and the shared locks it must never replace.
 
 Main through `8226792` is merged without rewriting its function-map rows or tool changes.
-Its two new LS skills are identity entries in the publication map; only the ten older live skills need renaming.
+Its three new LS skills are identity entries in the publication map; only the ten older live skills need renaming.
 Runtime logs, executables, libraries,
 profiles, shader/cache files, port-source filenames, game environment switches and external URLs
 keep their exact spelling. Live skill paths, the harness, clone/worktree paths, player/configuration
@@ -534,5 +534,14 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["tests/test_publication.py", "workbench\\nHookshot", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publish_check.py", "hookshot", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
 ["tests/test_publish_check.py", "longshot", 1, "Synthetic regression input proving legacy publication/cutover handling or rejection; not a public identity."]
+["docs/field-data.md", "https://git.magicbean.dev/MagicBeanDev/Longshot/issues/81", 1, "External URL of the project's crash issue; exact spelling is required to reach it."]
+["docs/field-data.md", "longshot-crashes", 1, "External Grafana dashboard identifier of the project's telemetry; exact spelling is required to query it."]
+["docs/field-data.md", "longshot-performance", 1, "External Grafana dashboard identifier of the project's telemetry; exact spelling is required to query it."]
+["docs/field-data.md", "longshot_", 1, "External Prometheus metric prefix of the project's telemetry; exact spelling is required to query it."]
+["skills/ls-field-data/SKILL.md", "longshot-crashes", 1, "External Grafana dashboard identifier of the project's telemetry; exact spelling is required to query it."]
+["skills/ls-field-data/SKILL.md", "longshot-performance", 1, "External Grafana dashboard identifier of the project's telemetry; exact spelling is required to query it."]
+["skills/ls-field-data/SKILL.md", "longshot_", 1, "External Prometheus metric prefix of the project's telemetry; exact spelling is required to query it."]
+["skills/ls-field-data/scripts/ls_field.py", "https://git.magicbean.dev/api/v1/repos/MagicBeanDev/Longshot", 1, "External URL of the project's forge API; exact spelling is required to reach it."]
+["skills/ls-field-data/scripts/ls_field.py", "longshot_", 1, "External Prometheus metric prefix of the project's telemetry; exact spelling is required to query it."]
 ```
 <!-- kept-literals:end -->
