@@ -7,6 +7,7 @@ an explicit environment whitelist, private HOME/TMPDIR and bounded deadlines.
 """
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -46,8 +47,9 @@ class HarnessExitTests(unittest.TestCase):
         checkpoint = SOURCE / 'regress/hs_checkpoint.py'
         if checkpoint.is_file():
             shutil.copy2(checkpoint, self.harness / 'regress/hs_checkpoint.py')
-        # Both published and installed gate names resolve to the same synthetic gate.
-        (self.home / 'Games/nx2navi-gpu-slot').symlink_to('hs-gpu-slot')
+        # Whatever gate name the staged wrapper asks for resolves to the same synthetic gate.
+        for gate in set(re.findall(r'Games/([A-Za-z0-9_-]+-gpu-slot)\b', text)) - {'hs-gpu-slot'}:
+            (self.home / 'Games' / gate).symlink_to('hs-gpu-slot')
         self.executable(self.bin / 'journalctl',
                         '#!/bin/sh\n# SYNTHETIC: no host journal read\n'
                         'printf "%s\\n" "$@" > "$SYNTHETIC_JOURNAL_ARGS"\nexit 0\n')
