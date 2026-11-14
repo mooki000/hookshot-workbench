@@ -207,7 +207,8 @@ user scope with `MemoryMax` and no swap; it does not prove the game stayed under
 `RX_VK_SHOTS` writes into the run. Defaults are 1280x720 every 300 renderer presents; that is five seconds **only at
 60 presents/s**. `RX_VK_SHOT_EVERY=60` changes the cadence, not a wall-clock guarantee. Headless menu capture needs
 `RX_VK_SHOT_MENU=1`. Bridge shots omit both Insert-menu and co-op overlays. The automatic menu-overlay path is
-offscreen-only; an explicitly authorized real-window presentation/overlay test needs an OS capture of the exact game window.
+offscreen-only and does carry them: use it for a windowless picture of a co-op name label or chat line. An explicitly
+authorized real-window presentation/overlay test needs an OS capture of the exact game window.
 
 Use the existing labelled-panel helper with explicit input/output names, not `ls | xargs montage`:
 
@@ -283,7 +284,8 @@ workbench and commits. Run `sync-from-live.sh` only when that integration is exp
 
 ## Workbench repository checks (not the game suite)
 
-This tools repository has no `tests/run_all.py` or checked-in CI workflow. From its reviewed checkout, run the direct
+This tools repository has no `tests/run_all.py` or checked-in CI workflow. From its reviewed checkout (the repository
+this skill is published from, or your own worktree of it; the agent brief names its folder), run the direct
 drivers separately: generic unittest discovery misses the plain-assert play drivers, and rolling must use this checkout's rules.
 
 ```sh

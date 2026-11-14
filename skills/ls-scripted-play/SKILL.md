@@ -106,7 +106,8 @@ keep streaming subscriptions on their own connection. Reconnect after an uncerta
   Its seconds start at the menu's first tick, not process/bridge uptime.
 - Use bridge `shot` for Vulkan captures. The drivers' legacy `shot` step writes `!shots` to live input; in the selected
   base that command targets the WebGPU renderer, not Vulkan. Do not treat its step completion as a captured PNG.
-  Bridge shots omit Insert-menu and co-op labels/chat; the automatic menu-overlay stream is offscreen-only.
+  Bridge shots omit Insert-menu and co-op labels/chat; the automatic menu-overlay stream (`RX_VK_SHOT_MENU=1`) is
+  offscreen-only and does show them, so a windowless proof of a label or chat line uses that stream.
   An explicitly authorized real-window presentation/overlay test needs an OS capture of the exact game window.
   Inspect the actual pose/chat pixels; a timed input or capture filename is not proof of a stride or delivery.
 

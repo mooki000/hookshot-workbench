@@ -63,7 +63,9 @@ the main session changes.
    checks `docs/names-kept.md` before replacing any checkout file; a names failure leaves the checkout untouched.
    `sync-from-live.sh --check` compares without writing. The legacy live folder names are mapped, not renamed.
    Run `publish-check.sh`, the skill check above and the workbench-repository tests in `ls-workbench`, read the diff,
-   then commit and push. Main alone synchronises live copies when no queued/running worker depends on them.
+   then commit and push. Main alone synchronises live copies when no queued/running worker depends on them: as a
+   reviewed patch of the changed lines (`git apply --check`, then `git apply`, with the old files kept), followed by
+   the skill check; never by copying the published tree over the live folders, whose names and unrelated text differ.
    Nothing game-derived goes into a skill: commands, paths and procedure only.
 
 ## What the check cannot see
