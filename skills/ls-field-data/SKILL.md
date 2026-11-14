@@ -45,7 +45,8 @@ python3 "$F" query 'PROMQL'                    # anything else; add --json to th
 The server wants a sign-in through Discord. **That approval is the user's:** `python3 "$F" login` prints a link, the
 user opens and approves it, and the token is kept in a private file (mode 600) outside every repository. Never ask a
 worker to sign in, never print or copy the token, and if the script says the sign-in expired, tell the main session.
-The script renews that token file by itself when it has run out; it changes nothing else anywhere.
+The script renews that token file by itself when it has run out; it changes nothing else anywhere. Under a strict
+"change nothing" assignment set `LS_FIELD_NO_RENEW=1`: it then stops instead of renewing.
 
 **No shell and no MCP tool** (a read-only worker)? Do not try the server yourself: it answers 401. The crash half is
 public: read the crash issue's comments on the forge. For the performance half ask the main session to run the

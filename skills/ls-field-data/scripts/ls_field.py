@@ -126,6 +126,8 @@ def token():
     except OSError:
         sys.exit("not signed in: run `ls_field.py login` (the approval in the browser is the user's)")
     if time.time() > s.get("expires_at", 0) - 60:
+        if os.environ.get("LS_FIELD_NO_RENEW"):
+            sys.exit("the sign-in has run out and LS_FIELD_NO_RENEW forbids renewing it: ask the main session")
         if not s.get("refresh_token"):
             sys.exit("the sign-in has expired: run `ls_field.py login` again")
         code, _, text = http_text(s["token_endpoint"], {
