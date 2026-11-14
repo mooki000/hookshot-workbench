@@ -198,8 +198,9 @@ skill extensions are copied; unreviewed file types and links refuse. It never to
 saves or game data. `--check` compares without writing. `LS_WB_SOURCE_ROOT` selects an isolated source tree
 (`harness/`, `skills/`, `gates/`, `docs/agent-brief.md`); the harness subtree has the installed subfolder layout.
 Individual source overrides are `LS_WB_HARNESS`, `LS_WB_SKILLS`, `LS_WB_GATES`, `LS_WB_GUARD` and `LS_WB_BRIEF`.
-After copying, the existing publication guard and [counted name policy](docs/names-kept.md) must pass;
-review the diff and run the game-free suites before committing. A newly introduced external literal needs a
+The proposed tree is staged and its [counted name policy](docs/names-kept.md) checked **before any checkout file is
+replaced or removed**; a names-check failure leaves existing files unchanged. The existing publication guard still runs afterwards.
+Review the diff and run the game-free suites before committing. A newly introduced external literal needs a
 reviewed, file-scoped entry, never a blanket exception.
 
 `python3 -I -B cutover.py --dry-run` prints every planned rename, rewritten file and `git worktree repair`.

@@ -15,7 +15,8 @@ executable, log and client; missing/mixed identities refuse. Naming proves no op
 client lacks session `show`/`log`/`stop`; those examples require the separately supported session-layer client.
 
 **Use for:** scripted input, state samples and save-backed routes. Read `ls-workbench` and the agent brief.
-All game runs are windowless. Never use the upstream client's unwrapped `launch` to bypass the harness/gate.
+On this Linux workstation game runs are windowless; a separately authorized remote Windows test does not change that.
+Never use the upstream client's unwrapped `launch` to bypass the harness/gate.
 
 Set `WT` to the selected owned LS or HS worktree before deriving the client path.
 
@@ -100,9 +101,17 @@ keep streaming subscriptions on their own connection. Reconnect after an uncerta
 - Read `option get` before `option set`; setters use the real menu and persist. Restore only your owned copy's
   intended settings. Debug travel/age operations need observed binary support and an authorized disposable profile.
   Never enable `HOS_CONTROL_MEM=rw` or use memory writes as an input substitute.
+  Named settings are not action-row selection. On builds with `RX_VK_MENU_SCRIPT`, `ROW:<internal name>` selects
+  a visible row in the current tab, not a translated label or another tab. Verify the actual menu before confirming.
+  Its seconds start at the menu's first tick, not process/bridge uptime.
 - Use bridge `shot` for Vulkan captures. The drivers' legacy `shot` step writes `!shots` to live input; in the selected
   base that command targets the WebGPU renderer, not Vulkan. Do not treat its step completion as a captured PNG.
-  Bridge shots omit the Insert-menu overlay; use the harness's menu-capture switch when that overlay is the evidence.
+  Bridge shots omit Insert-menu and co-op labels/chat; the automatic menu-overlay stream is offscreen-only.
+  An explicitly authorized real-window presentation/overlay test needs an OS capture of the exact game window.
+  Inspect the actual pose/chat pixels; a timed input or capture filename is not proof of a stride or delivery.
+
+For a periodic observer, record sample timestamps and check actual gaps, including input/capture phases; a sleep after
+observation is not a fixed cadence. Sequential captures of two games are not simultaneous evidence.
 
 ### Owned session logs and shutdown
 

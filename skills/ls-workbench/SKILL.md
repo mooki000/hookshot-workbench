@@ -25,7 +25,8 @@ This source rename does not run publication, sync, relocation, installation or h
 owns those separately authorized operations. See the repository README's **Published identity and deferred host cutover**.
 
 **Use for:** every LS or HS task on this machine. Read the agent brief, then the matching task skill.
-**All game runs are windowless.** A leftover `window-ok` is not permission. Do not send anything to the compositor.
+**On this Linux workstation, all game runs are windowless.** A leftover `window-ok` is not permission.
+A separately authorized remote Windows test does not lift this local restriction. Do not send anything to the compositor.
 Reports name the skills read, tools used, pinned sources, checks exercised and work not tested.
 
 ## Set up the paths and rules
@@ -142,6 +143,10 @@ Prefer rebuilding with the same work/output/profile identity. A fast donor build
 `nx2/make_game.py` lift inputs, HLE names, generated layout and host/renderer API are compatible. A diff limited to
 `host/` and `gpu/` alone does **not** prove that. Use the regression builder's conservative grouping and a finished
 immutable donor receipt; do not assume the copy named `main` or the old bench is compatible.
+Compare lift identities in the donor receipt's original lift environment; record relocated work/exefs paths separately.
+Whole-lift compatibility and per-unit object-cache reuse are different decisions; report actual new/cache counts.
+Register the completed donor tree: compilation adds `lifted_objects.txt`, which whole-tree hashes include but
+`gen_print` excludes. Keep pre/post-build hashes distinct; a cache hit does not identify which earlier build supplied it.
 
 After selecting that donor, set `DONOR_WORK`, `DONOR_COPY` and the receipt's relative profile path. Copy to **new**
 owned destinations with `cp -a --reflink=always`; make `work/` first. For a same-identity donor whose recorded
@@ -201,7 +206,8 @@ user scope with `MemoryMax` and no swap; it does not prove the game stayed under
 
 `RX_VK_SHOTS` writes into the run. Defaults are 1280x720 every 300 renderer presents; that is five seconds **only at
 60 presents/s**. `RX_VK_SHOT_EVERY=60` changes the cadence, not a wall-clock guarantee. Headless menu capture needs
-`RX_VK_SHOT_MENU=1`. A bridge `shot` captures no Insert-menu overlay.
+`RX_VK_SHOT_MENU=1`. Bridge shots omit both Insert-menu and co-op overlays. The automatic menu-overlay path is
+offscreen-only; an explicitly authorized real-window presentation/overlay test needs an OS capture of the exact game window.
 
 Use the existing labelled-panel helper with explicit input/output names, not `ls | xargs montage`:
 
@@ -250,9 +256,12 @@ HOME="$TEST_HOME" RX_CPM="$CPM" "$H/hs-idle.sh" "$P" -I -B tests/run_all.py --jo
 The test gate has three slots, uses idle scheduling and suppresses core dumps. It can wait behind an exclusive hold;
 no output while queued is not a failed test. Keep its child receipt. A single game-free test may use
 `"$H/hs-nocore.sh" "$P" -I -B <test-file>` without the idle gate. Never run the full suite that way.
+Apply any assignment-specific outer quiet/shared measuring locks as well; record admission wait separately from child time.
+When a worker is assigned only focused checks, hand those receipts to the integration owner; do not call them a full suite.
 
-Check the selected tests' literal `RUN_ALL_ARGS`, `RUN_ALL_MODULES` and `RUN_ALL_SKIP` declarations. `--strict` fails
-missing prerequisites; `--shard K/N` partitions CI, not full coverage. A missing dependency is not a pass. Retain the
+Check the selected tests' literal `RUN_ALL_ARGS`, `RUN_ALL_MODULES` and `RUN_ALL_SKIP` declarations. Explicitly named
+tests override `RUN_ALL_SKIP`: exclude real-device tests before a game-free selection. `--strict` fails missing prerequisites;
+`--shard K/N` partitions CI, not full coverage. A missing dependency is not a pass. Retain the
 `pass`/`FAIL`/`TIMEOUT` rows and totals. Check for your unintended dumps with
 `coredumpctl list --since '-30min' --no-pager`; do not confuse other work's dumps with yours.
 
@@ -271,6 +280,45 @@ HOME="$TEST_HOME" HS_PYTHON="$P" RX_CPM="$CPM" "$H/hs-idle.sh" "$H/hs-win-fixtur
 Keep unsupported discovery visible. Syntax success is not Windows execution. Read `ls-pr-evidence` for the
 pre-push checker, imported-author rules, CI comparison and drafts. The main session alone syncs live skills into the public
 workbench and commits. Run `sync-from-live.sh` only when that integration is explicitly delegated.
+
+## Workbench repository checks (not the game suite)
+
+This tools repository has no `tests/run_all.py` or checked-in CI workflow. From its reviewed checkout, run the direct
+drivers separately: generic unittest discovery misses the plain-assert play drivers, and rolling must use this checkout's rules.
+
+```sh
+set -e
+ulimit -S -c 0
+for test in tests/test_*.py harness/test_*.py play/test_*.py perf/test_*.py regress/test_*.py nightly/test_*.py skills/*/scripts/test_*.py; do
+  if [ "$test" = nightly/test_rolling.py ]; then
+    python3 -I -B "$test" --shared-dir "$PWD/regress"
+  else
+    python3 -I -B "$test"
+  fi
+done
+python3 -I -B nightly/test_compare.py --mutations
+node --test skills/ls-discord-updates/scripts/test_discord_tab.mjs
+python3 -I -B skills/ls-skill-upkeep/check_skills.py --root skills
+python3 -I -B name_policy.py
+bash publish-check.sh
+```
+
+For MCP, install the selected checkout's package metadata and locked dev dependencies into its own environment;
+`PYTHONPATH` alone is insufficient. Do not borrow another checkout's editable package registration.
+Use the pinned Python 3.12 for the current fixtures: Python 3.14's automatic Unix-socket cleanup breaks the
+stale-socket broker fixture before its production assertion; retain that failure rather than weakening the check.
+
+```sh
+uv sync --locked --project mcp --python "$P"
+TEST_TMP=$(mktemp -d /tmp/ls-wb-tests.XXXXXX)
+TMPDIR="$TEST_TMP" uv run --project mcp --locked --no-sync python -B -m pytest -q -p no:cacheprovider mcp/tests --basetemp "$TEST_TMP/pytest"
+```
+
+Fixture state must have **no `.git` ancestor**; keep `TMPDIR` and pytest's base outside all repositories. Suppress
+cores with the soft limit only, not `ulimit -c 0` or a hard-zero wrapper: the MCP worker sets `(1, 1)`.
+An offline setup needs the locked packages already cached. A setup failure is not a test result. These suites use
+synthetic fixtures, not a game, live gate or account. Keep every failed attempt and its setup correction.
+Publication maps are in `publish.py`; repository-only tests are not automatically installed into the live harness.
 
 ## MCP routes
 

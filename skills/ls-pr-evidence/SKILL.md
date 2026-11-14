@@ -54,12 +54,14 @@ Use the user's detailed, illustrated pull requests as the bar:
    labelled picture. What was only built says "built"; what was not run says "not run".
 4. The risks and the untested parts are said plainly, in their own sections, before a reviewer has to ask.
 5. A draft stays a draft while the feature is not done, but it carries its evidence all the same.
+6. **Before marking ready**, reread the current description's first prose paragraph: refuse while it contains `Draft`, `WIP`, `waits for` or `stays work in progress` (case-insensitive); reconcile the text and evidence first.
 
 ## The body, section by section
 
-LS/HS want a Conventional Commit title and a body that opens with why. Inside that, use this form (leave out a
-section only when it would be empty; a one-line fix still has the first paragraph, what changed, how tested, not
-tested):
+Use a Conventional Commit title and a body that opens with why. When the selected checkout has
+`.forgejo/pull_request_template.md`, use it literally: preserve headings, labels, checklist text and its `main @ <hash>`
+and `this PR @ <hash>` forms. Keep the origin line on migrated descriptions. Put the evidence below inside those
+sections, not in a replacement template. The form below is for the older GitHub workflow:
 
 ```
 **What this is for:** who gains what, in a player's or developer's words, with the issue (#N). **What is measured:**

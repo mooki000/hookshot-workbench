@@ -4,6 +4,7 @@ from pathlib import Path
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -28,6 +29,12 @@ def stage(root):
             if not source.exists():
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_text('synthetic source\n')
+    return root
+
+
+def destination(root):
+    (root / 'docs').mkdir(parents=True)
+    shutil.copy2(ROOT / name_policy.MANIFEST, root / name_policy.MANIFEST)
     return root
 
 
@@ -135,7 +142,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_staging_is_idempotent_cleans_managed_skills_and_leaves_mcp(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary); source = stage(root / 'stage'); checkout = root / 'checkout'; checkout.mkdir()
+            root = Path(temporary); source = stage(root / 'stage'); checkout = destination(root / 'checkout')
             legacy = checkout / 'skills' / next(iter(publish.SKILL_MAP)); legacy.mkdir(parents=True)
             (legacy / 'SKILL.md').write_text('obsolete')
             (checkout / 'mcp').mkdir(); protected = checkout / 'mcp/owned.txt'; protected.write_text('unchanged')
@@ -157,10 +164,14 @@ class PublicationTests(unittest.TestCase):
 
     def test_identity_skills_keep_helpers_and_map_links_without_editing_live_sources(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary); source = stage(root / 'stage'); checkout = root / 'checkout'; checkout.mkdir()
+            root = Path(temporary); source = stage(root / 'stage'); checkout = destination(root / 'checkout')
             skill = source / 'skills/ls-skill-upkeep'
             original = ('---\nname: ls-skill-upkeep\n---\nRead skill://hookshot-workbench and `hookshot-pr-evidence`.\n'
                         'Run /home/mooki/.agents/skills/hookshot-pr-evidence/scripts/panels.sh.\n')
+            manifest = checkout / name_policy.MANIFEST
+            row = ['skills/ls-skill-upkeep/SKILL.md', name_policy.literals(original)[-1], 1,
+                   'Synthetic live command path for this publication fixture.']
+            manifest.write_text(manifest.read_text().replace(name_policy.END, json.dumps(row) + '\n' + name_policy.END))
             (skill / 'SKILL.md').write_text(original)
             helper = skill / 'check_skills.py'; helper.write_text('print("synthetic checker")\n'); helper.chmod(0o755)
             with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(source)}), contextlib.redirect_stdout(io.StringIO()):
@@ -173,6 +184,61 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual((published / 'check_skills.py').stat().st_mode & 0o777, 0o755)
             self.assertTrue((checkout / 'skills/ls-function-map/SKILL.md').is_file())
             self.assertEqual((skill / 'SKILL.md').read_text(), original)
+
+    def test_names_failure_preserves_all_checkout_bytes_modes_and_obsolete_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = stage(root / 'stage'); checkout = destination(root / 'checkout')
+            with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(source)}):
+                publish.publish(checkout)
+                stale = checkout / 'skills/ls-workbench/stale.py'
+                stale.write_text('retained until publication passes')
+                stale.chmod(0o751)
+                before = {p.relative_to(checkout): (p.read_bytes(), p.stat().st_mode)
+                          for p in checkout.rglob('*') if p.is_file()}
+                (source / 'harness/hs-run.sh').write_text('changed allowed file')
+                (source / 'harness/hs-save.sh').write_text('unlisted-' + next(iter(publish.SKILL_MAP)))
+                for check in (False, True):
+                    with self.subTest(check=check), self.assertRaisesRegex(ValueError, 'names check failed before'):
+                        publish.publish(checkout, check=check)
+                    after = {p.relative_to(checkout): (p.read_bytes(), p.stat().st_mode)
+                             for p in checkout.rglob('*') if p.is_file()}
+                    self.assertEqual(after, before)
+
+    def test_staged_names_check_includes_repository_only_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = stage(root / 'stage'); checkout = destination(root / 'checkout')
+            (checkout / 'unmanaged.txt').write_text(next(iter(publish.SKILL_MAP)))
+            with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(source)}):
+                with self.assertRaisesRegex(ValueError, 'unmanaged.txt'):
+                    publish.publish(checkout)
+            self.assertFalse((checkout / 'harness').exists())
+
+    def test_missing_names_manifest_refuses_before_writing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = stage(root / 'stage'); checkout = root / 'checkout'
+            checkout.mkdir()
+            with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(source)}), self.assertRaises(OSError):
+                publish.publish(checkout)
+            self.assertEqual(list(checkout.iterdir()), [])
+
+    def test_sync_shell_checks_staged_sources_before_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = stage(root / 'stage'); checkout = destination(root / 'checkout')
+            for name in ('sync-from-live.sh', 'publish.py', 'name_policy.py', 'publish-check.sh'):
+                shutil.copy2(ROOT / name, checkout / name)
+            env = {**os.environ, 'LS_WB_SOURCE_ROOT': str(source), 'HS_PYTHON': sys.executable}
+            command = ['bash', str(checkout / 'sync-from-live.sh')]
+            first = subprocess.run(command, env=env, text=True, capture_output=True)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            checked = subprocess.run([*command, '--check'], env=env, text=True, capture_output=True)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            target = checkout / 'harness/hs-run.sh'
+            before = target.read_bytes()
+            (source / 'harness/hs-run.sh').write_text('unlisted-' + next(iter(publish.SKILL_MAP)))
+            refused = subprocess.run(command, env=env, text=True, capture_output=True)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn('names check failed before publication', refused.stderr)
+            self.assertEqual(target.read_bytes(), before)
 
     def test_relocation_is_literal_and_skips_private_and_linked_files(self):
         with tempfile.TemporaryDirectory() as temporary:

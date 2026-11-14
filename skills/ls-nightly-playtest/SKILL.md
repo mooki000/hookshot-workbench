@@ -1,8 +1,8 @@
 ---
 name: ls-nightly-playtest
 description: >
-  Observe the existing LS or HS rolling-main watch, read retained evidence, run its offline checks,
-  and resume explicitly authorized nightly work without repeating completed steps.
+  Use when checking or resuming the existing LS or HS rolling-main watch, reading retained evidence,
+  or running its offline checks; resume only explicitly authorized work without repeating completed steps.
   Compare controlled play/logs/images and prepare unposted drafts. Read ls-workbench and ls-perf-compare first.
 ---
 
@@ -318,9 +318,9 @@ No timer has been armed or exercised by this lane.
 
 ## Public sync list
 
-The explicit `sync-from-live.sh` manifest also carries shared name/perf dependencies and their tests. Publish only `nightly/hs-nightly.py`, `build.py`, `common.py`, `scenario.py`, `monitor.py`, `metrics.py`, `compare.py`,
-`store.py`, `report.py`, `hunt.py`, `rolling.py`, `test_compare.py`, `test_driver.py`, `test_rolling.py`,
-`test_runtime_names.py`, `README.md`, and this skill's `SKILL.md`.
+`publish.py`'s `GROUPS` is the explicit nightly live-to-repository manifest used by `sync-from-live.sh`;
+`HARNESS_MAP` and the other groups carry shared name/perf dependencies and tests, and `SKILL_MAP` carries this skill.
+Use those tables, not a second hand-maintained file list.
 Never sync configuration, JSON scenarios, baselines, databases, raw runs, reports, drafts, images, saves, game copies,
 caches or generated client data.
 

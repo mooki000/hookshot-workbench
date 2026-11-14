@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import tokenize
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -246,6 +247,31 @@ def publish(root, check=False):
             safe_target(root, path.relative_to(root))
             if path.is_file() and path.relative_to(root) not in expected:
                 obsolete.append(path)
+    # Validate the complete proposed tree, including removals, before replacing any
+    # checkout file. The live files are read once; only these prepared bytes commit.
+    with tempfile.TemporaryDirectory(prefix='ls-publish-') as temporary:
+        staged = Path(temporary)
+        for relative in name_policy.repository_files(root):
+            source = root / relative
+            if not source.exists() and not source.is_symlink():
+                continue
+            target = staged / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target, follow_symlinks=False)
+        for path in obsolete:
+            target = staged / path.relative_to(root)
+            if target.exists():
+                shutil.rmtree(target) if target.is_dir() else target.unlink()
+        for relative, content, mode in prepared:
+            target = staged / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+            target.chmod(mode)
+        extra = name_policy.violations(staged)
+        if extra:
+            details = '\n'.join(f'{path}: {literal!r} ({count} excess)'
+                                for (path, literal), count in sorted(extra.items()))
+            raise ValueError('names check failed before publication:\n' + details)
     changed = []
     for relative, content, mode in prepared:
         target = root / relative
