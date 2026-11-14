@@ -55,7 +55,7 @@ class MetricHistoryTests(unittest.TestCase):
                                     for key, value, direction in (('worst_second_fps', count, 'lower'),
                                                                  ('worst_second_start_s', start, 'higher'))}}
 
-            old = record(old_fingerprint, 2, 1.5)
+            old = record(old_fingerprint, 2, 0.75)
             for night in ('n01', 'n02', 'n03'):
                 store.begin(night, {'commit': 'same-unchanged-trace', 'started': night})
                 store.record(night, old, True)
