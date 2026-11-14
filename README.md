@@ -49,6 +49,10 @@ the scripts were written by them under those rules, then run and checked here. T
   driver lines, the load before and after). `--intel` selects the integrated GPU, `--input` plays a press script,
   `--user` copies a disposable save, and `--perf` requests optional sampled context. A new explicit grant is needed
   for the existing `--window` mechanism; a leftover switch file is not permission.
+  The wrapper returns 0 once reporting succeeds, even when the game failed: read `exit.txt` or `exit=` in the
+  summary for the game's status (124 means the wall-time limit). Summary generation or final-write failures
+  return nonzero instead. A failed final `tee` preserves its status and skips `runs.log`; a failed log append
+  keeps the written summary and game receipt.
 - **`harness/hs-idle.sh <command>`**: runs the game-free checks (`tests/run_all.py`) in the idle scheduling class, three
   at a time, never beside a timing run, and with core dumps switched off.
 - **`harness/hs-nocore.sh <command>`**: runs one command with core dumps off. HS's checks crash three fixture

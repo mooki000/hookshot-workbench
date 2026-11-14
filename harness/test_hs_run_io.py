@@ -5,8 +5,7 @@ import os
 from pathlib import Path
 import unittest
 
-source = Path(os.environ.get('HS_RUN_SOURCE', str(Path(__file__).resolve().parents[1])))
-spec = importlib.util.spec_from_file_location('committed_tests', source / 'harness/test_hs_run.py')
+spec = importlib.util.spec_from_file_location('committed_tests', Path(__file__).with_name('test_hs_run.py'))
 original = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(original)
 

@@ -7,6 +7,7 @@ an explicit environment whitelist, private HOME/TMPDIR and bounded deadlines.
 """
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -30,15 +31,26 @@ class HarnessExitTests(unittest.TestCase):
         self.bin = self.root / 'bin'
         self.bin.mkdir()
         self.env = {'PATH': str(self.bin) + ':/usr/bin:/bin', 'HOME': str(self.home),
-                    'TMPDIR': str(self.root), 'LC_ALL': 'C', 'PYTHONDONTWRITEBYTECODE': '1'}
+                    'TMPDIR': str(self.root), 'LC_ALL': 'C', 'PYTHONDONTWRITEBYTECODE': '1',
+                    'SYNTHETIC_JOURNAL_ARGS': str(self.root / 'journal-arguments.txt')}
         self.wrapper = self.harness / 'hs-run.sh'
         text = (SOURCE / 'harness/hs-run.sh').read_text()
         self.wrapper.write_text(text.replace('/home/mooki', str(self.home)))
         self.wrapper.chmod(0o700)
-        # Synthetic dependency boundary: never read the real kernel journal.
+        # Stage the real reader and its naming helpers, not a partial API stub.
+        for name in ('hs-names.sh', 'hs_names.py'):
+            shutil.copy2(SOURCE / 'harness' / name, self.harness / name)
         (self.harness / 'regress').mkdir()
-        (self.harness / 'regress/run_case.py').write_text("def kernel_lines(start, end, intel=False):\n    return '', {'kernel_errors': 0, 'no_memory_events': 0, 'no_memory_lines': 0, 'nvrm_lines': 0, 'kernel_status': 'SYNTHETIC-no-journal'}\n")
-        self.executable(self.bin / 'journalctl', '#!/bin/sh\n# SYNTHETIC: no host journal read\nexit 0\n')
+        shutil.copy2(SOURCE / 'regress/run_case.py', self.harness / 'regress/run_case.py')
+        # The installed reader also imports its optional checkpoint implementation.
+        checkpoint = SOURCE / 'regress/hs_checkpoint.py'
+        if checkpoint.is_file():
+            shutil.copy2(checkpoint, self.harness / 'regress/hs_checkpoint.py')
+        # Both published and installed gate names resolve to the same synthetic gate.
+        (self.home / 'Games/nx2navi-gpu-slot').symlink_to('hs-gpu-slot')
+        self.executable(self.bin / 'journalctl',
+                        '#!/bin/sh\n# SYNTHETIC: no host journal read\n'
+                        'printf "%s\\n" "$@" > "$SYNTHETIC_JOURNAL_ARGS"\nexit 0\n')
         self.executable(self.bin / 'systemd-run', '#!/bin/sh\n# SYNTHETIC deny: no service or scope access\nexit 99\n')
         self.executable(self.copy / 'hookshot', '#!/bin/sh\n# SYNTHETIC shell double, no game or GPU\nexit 23\n')
         # Empty guard markers only; not game content.
@@ -50,6 +62,7 @@ class HarnessExitTests(unittest.TestCase):
         path.chmod(0o700)
 
     def run_wrapper(self, args):
+        self.assertEqual(shutil.which('journalctl', path=self.env['PATH']), str(self.bin / 'journalctl'))
         result = subprocess.run([str(self.wrapper), *map(str, args)], env=self.env,
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=8)
         stage = os.environ.get('HS_RUN_STAGE', 'probe')
@@ -60,10 +73,20 @@ class HarnessExitTests(unittest.TestCase):
         (logs / (self._testMethodName + '.exit')).write_text(str(result.returncode) + '\n')
         receipt_dir = logs / (self._testMethodName + '.receipts')
         receipt_dir.mkdir(exist_ok=True)
-        for name in ('exit.txt', 'wall.txt', 'hookshot_log.txt', 'summary.txt', 'env-used.txt'):
+        for name in ('exit.txt', 'wall.txt', 'hookshot_log.txt', 'summary.txt', 'env-used.txt',
+                     'kernel.txt', 'kernel-status.json', 'journal-arguments.txt'):
             for path in self.root.rglob(name):
                 if path.is_file():
                     (receipt_dir / name).write_bytes(path.read_bytes())
+        journal = self.root / 'journal-arguments.txt'
+        if str(args[0]) != '--inner' and (self.copy / 'runs' / str(args[1]) / 'exit.txt').is_file():
+            run = self.copy / 'runs' / str(args[1])
+            self.assertEqual(journal.read_text().splitlines(),
+                             ['-k', '--since', (run / 'start.txt').read_text().strip(),
+                              '--until', (run / 'end.txt').read_text().strip(),
+                              '--no-pager', '--output=short-iso'])
+        else:
+            self.assertFalse(journal.exists(), 'inner/refused run must not read the journal')
         return result
 
     def gate(self, malformed=False):
