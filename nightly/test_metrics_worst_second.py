@@ -7,6 +7,7 @@ rational arithmetic, then counts each window from scratch.
 from fractions import Fraction
 from itertools import combinations_with_replacement
 from pathlib import Path
+import math
 import sys
 import unittest
 
@@ -122,6 +123,49 @@ class WorstSecondTests(unittest.TestCase):
         rows = [(-1.2, 250.0), (-1.2, 250.0), (-0.2, 1000.0)]
         self.assertGreater(Fraction(rows[0][0]) + 1, Fraction(rows[-1][0]))
         self.assert_worst(rows, 2)
+
+    def test_first_window_count_precedes_location_rounding(self):
+        rows = [(4.0, math.nextafter(1000.0, math.inf))]
+        windows = exact_windows(rows)
+        self.assertEqual(min(count for _, count in windows), 0)
+        self.assertEqual(frame_stats(rows)['worst_second_fps'], 0)
+        # The only optimal starts are not representable floats. The count, not
+        # an exact recount at the rounded diagnostic location, is the contract.
+        first = Fraction(4) - Fraction(rows[0][1]) / 1000
+        self.assertLess(first + 1, 4)
+        self.assertEqual(float(first), 3.0)
+
+    def test_initial_support_below_float_range_keeps_exact_count(self):
+        largest = math.nextafter(math.inf, 0.0)
+        rows = [(-largest, largest)]
+        self.assertEqual(min(count for _, count in exact_windows(rows)), 0)
+        result = frame_stats(rows)
+        self.assertEqual(result['worst_second_fps'], 0)
+        self.assertEqual(result['worst_second_start_s'], -largest)
+
+    def test_first_boundary_neighbors_match_exact_oracle(self):
+        for origin in (-1024.0, -4.0, -0.9, -0.3, 0.0, 0.1, 0.3, 4.0, 1024.0):
+            for ms in (math.nextafter(1000.0, -math.inf), 1000.0,
+                       math.nextafter(1000.0, math.inf)):
+                for times in ((origin,), (origin, origin),
+                              (origin, math.nextafter(origin, math.inf)),
+                              (origin, origin, origin + 0.5)):
+                    rows = [(t, ms if i == 0 else 1.0) for i, t in enumerate(times)]
+                    with self.subTest(rows=rows):
+                        windows = exact_windows(rows)
+                        expected = min((count for _, count in windows), default=None)
+                        self.assertEqual(frame_stats(rows)['worst_second_fps'], expected)
+
+    def test_wide_exponents_and_subnormals_match_exact_oracle(self):
+        tiny = math.nextafter(0.0, 1.0)
+        for times in ((tiny, 1.0, 2.0), (-1e300, tiny, 1e300),
+                      (-tiny, 0.0, tiny), (2.0**52, 2.0**52 + 1)):
+            for ms in (tiny, 1000.0, math.nextafter(1000.0, math.inf)):
+                rows = [(t, ms if i == 0 else 1.0) for i, t in enumerate(times)]
+                with self.subTest(rows=rows):
+                    windows = exact_windows(rows)
+                    expected = min((count for _, count in windows), default=None)
+                    self.assertEqual(frame_stats(rows)['worst_second_fps'], expected)
 
 
 if __name__ == '__main__':

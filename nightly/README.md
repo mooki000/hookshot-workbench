@@ -134,6 +134,29 @@ learned from prior good images; black/blank/flash candidates require visual revi
 accounting remain missing. Logs keep warning/error signatures and counts; source logs remain available. No image
 should be cited before a person or agent has looked at it.
 
+### Complete rolling-second definition (version 2)
+
+`worst_second_fps` is the minimum number of completions in any complete `(start, start + 1]` second inside
+the trace, whose support begins at the first completion minus its recorded duration in milliseconds divided
+by 1000, and ends at the last completion. Received binary floats are treated exactly; the left edge excludes
+a completion and the right includes it. Shorter traces have no complete second and return null. For completions
+`0.25, 0.5, 0.75, 1, 1.75, 2.5` with durations `250, 250, 250, 250, 750, 750` ms, the old arrival-only
+definition returned 2, but `(1, 2]` contains only 1.75, so version 2 returns 1. A duration exactly 1000 ms
+does not imply an empty second. `worst_second_start_s` is a diagnostic location: when an optimal initial start
+is not representable as a float, the returned nearby float can lie outside exact support or recount differently.
+Locations below the finite float range saturate at its lower bound; the minimum count is still exact.
+Neither field measures scanout or GPU completion.
+
+`metrics.WORST_SECOND_VERSION = 2` is retained as `metric_definitions.worst_second` in scenario results and
+included with the scenario JSON in `scenario_sha256`. SQLite history lookup and exported baseline buckets
+already key on that fingerprint. Old unversioned histories are preserved but never compared with version 2:
+the first new result seeds a new baseline, and three eligible new nights are required for a numerical band.
+This deliberately resets the entire catalogue scenario's baseline, not just these two fields; it does not
+rewrite old results. The separate rolling-main regression adapter does not calculate these fields.
+
+The exact-window and history-transition tests (`test_metrics_worst_second.py`, `test_metric_history.py`)
+are repository-owned; they are not copied from live by the publication manifest.
+
 The report names failures, changed tests, raw evidence, unjudged timings and available commit ranges. Tracker searches
 precede local issue-form drafts; nothing is posted. The shared `regress/regress.py` owns bisection and lift grouping.
 `hunt.py` supplies a held-control adapter and exact scenario/threshold handoff, capped at eight steps and 90 minutes.

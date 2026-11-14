@@ -1,6 +1,5 @@
 """Readers for preserved traces and sampled process data; unsupported sources stay missing."""
 from collections import Counter
-from fractions import Fraction
 from pathlib import Path
 import csv
 import importlib.util
@@ -15,6 +14,10 @@ from hs_names import log_path
 WARNING = re.compile(r'\b(?:warn(?:ing)?|error|fatal|crash|failed|failure|unsupported|timeout)\b|VK_ERROR_|ran without a core', re.I)
 ACTIVITY = re.compile(r'(?:pipeline|shader|program).*(?:compil|translat|built|pending|wait)|(?:compil|translat).*(?:pipeline|shader|program)', re.I)
 VRAM = re.compile(r'vram|memory budget|texture cache|(?:device|card).*memory|memory.*(?:used|budget)', re.I)
+
+# Version 1 sampled arrival-ending seconds. Version 2 minimizes every complete
+# open-left/closed-right second, including the exact initial support boundary.
+WORST_SECOND_VERSION = 2
 
 
 def frame_stats(rows):
@@ -33,32 +36,48 @@ def frame_stats(rows):
         over = [x for x in values if x > limit]
         result[f'over_{limit:g}_count'] = len(over)
         result[f'over_{limit:g}_longest_ms'] = max(over, default=0)
-    # Fewest completions in a rolling second; a stall over one second has a zero-frame
-    # window before it ends. This is not scanout or a GPU-completion measurement.
+    # Binary floats have power-of-two denominators. A common integer lattice
+    # also needs the factor 125 (and three binary places) for ms / 1000.
+    # Keep the first window exact: rounding its start can change its count.
+    ratios = [t.as_integer_ratio() for t, _ in rows]
+    ms_n, ms_d = rows[0][1].as_integer_ratio()
+    scale = max(ms_d * 8, max(d for _, d in ratios)) * 125
+    times = [n * (scale // d) for n, d in ratios]
+    first = times[0] - ms_n * (scale // (ms_d * 1000))
+    last = times[-1]
+    size = len(times)
     worst_fps, worst_start = math.inf, None
-    first = Fraction(rows[0][0]) - Fraction(rows[0][1]) / 1000
-    # Count at the float location we can return, rounded into the support.
-    # If no float start fits, retain the exact first window (location is lossy).
-    first_float = float(first)
-    if first_float < first:
-        first_float = math.nextafter(first_float, math.inf)
-    if Fraction(first_float) + 1 <= rows[-1][0]:
-        first = Fraction(first_float)
-    left = right = 0
-    # Counts can decrease only when the open left edge reaches a completion.
-    # Also inspect the first full window; both indices advance at most n times.
-    for i in range(len(rows) + 1):
-        start = first if i == 0 else Fraction(rows[i - 1][0])
-        # Do not round start + 1: distinct received-float boundaries can merge.
-        end = start + 1
-        if end > rows[-1][0]:
-            break
-        while left < len(rows) and rows[left][0] <= start:
-            left += 1
-        while right < len(rows) and rows[right][0] <= end:
+    end = first + scale
+    right = 0
+    if end <= last:
+        while right < size and times[right] <= end:
             right += 1
-        if right - left < worst_fps:
-            worst_fps, worst_start = right - left, float(start)
+        worst_fps = right
+        try:
+            worst_start = first / scale
+        except OverflowError:
+            # Finite inputs can put the initial support below the float range.
+            # Saturate only its diagnostic location, never its exact count.
+            worst_start = math.nextafter(-math.inf, 0.0)
+        # Counts decrease only when the open left edge reaches a completion.
+        # At a tie exclude the entire group. The right index advances n times
+        # in total; integer comparisons never round start + one second.
+        initial = True
+        for left, start in enumerate(times, 1):
+            end = start + scale
+            if end > last:
+                break
+            if left < size and times[left] == start:
+                continue
+            while right < size and times[right] <= end:
+                right += 1
+            count = right - left
+            if count < worst_fps or (initial and count == worst_fps):
+                worst_fps, worst_start = count, rows[left - 1][0]
+                initial = False
+        # Prefer an exact completion location on a tied minimum. Otherwise the
+        # initial location can be lossy; only the count is guaranteed exact.
+    # This is a completion count, not scanout or a GPU-completion measurement.
     result['worst_second_fps'] = worst_fps if worst_start is not None else None
     result['worst_second_start_s'] = worst_start
     return result

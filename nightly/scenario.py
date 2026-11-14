@@ -14,7 +14,7 @@ import time
 import threading
 from common import HARN, capture, env_clean, gated, put, slug, stamp, stop_group, text
 from monitor import Monitor, resources, unsafe
-from metrics import collect
+from metrics import WORST_SECOND_VERSION, collect
 from hs_names import checkout_names, copy_names, log_path
 
 
@@ -203,7 +203,10 @@ class Run:
         self.out.mkdir(parents=True, exist_ok=True)
         (self.out / 'shots').mkdir(exist_ok=True)
         put(self.out / 'scenario.json', self.spec)
-        self.meta['scenario_sha256'] = hashlib.sha256(json.dumps(self.spec, sort_keys=True).encode()).hexdigest()
+        # Definition changes start a fresh history even with unchanged settings.
+        self.meta['metric_definitions'] = {'worst_second': WORST_SECOND_VERSION}
+        definition = {'scenario': self.spec, 'metric_definitions': self.meta['metric_definitions']}
+        self.meta['scenario_sha256'] = hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
         seconds = self.spec['seconds']
         if not 20 <= seconds <= 450:
             raise ValueError('this runner supports 20–450 game seconds, reserving termination time within eight minutes')
