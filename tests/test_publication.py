@@ -89,10 +89,12 @@ class PublicationTests(unittest.TestCase):
             with patch.dict(os.environ, {'LS_WB_SOURCE_ROOT': str(root)}):
                 pairs = publish.files()
             destinations = {str(destination) for _, destination in pairs}
-            self.assertEqual(len(pairs), 60)
+            self.assertEqual(len(pairs), 61)
             self.assertIn('harness/ls-port.py', destinations)
             self.assertIn('regress/test_runtime_names.py', destinations)
             self.assertIn('nightly/test_runtime_names.py', destinations)
+            self.assertIn((root / 'harness/nightly/test_compare_signature_paths.py',
+                           Path('nightly/test_compare_signature_paths.py')), pairs)
             self.assertIn('skills/ls-function-map/SKILL.md', destinations)
             self.assertIn('skills/ls-skill-upkeep/SKILL.md', destinations)
             self.assertNotIn('mcp/pyproject.toml', destinations)

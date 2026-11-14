@@ -42,7 +42,8 @@ GROUPS = {
     'perf': ('perf', ('hs_perf.py', 'test_hs_perf.py')),
     'nightly': ('nightly', ('hs-nightly.py', 'build.py', 'common.py', 'scenario.py', 'monitor.py',
                           'metrics.py', 'compare.py', 'store.py', 'report.py', 'hunt.py', 'rolling.py',
-                          'test_compare.py', 'test_driver.py', 'test_rolling.py', 'test_longshot_names.py', 'README.md')),
+                          'test_compare.py', 'test_compare_signature_paths.py', 'test_driver.py',
+                          'test_rolling.py', 'test_longshot_names.py', 'README.md')),
 }
 FILE_MAP = {'longshot-port.py': 'ls-port.py', 'test_longshot_port.py': 'test_ls_port.py',
             'test_longshot_names.py': 'test_runtime_names.py'}

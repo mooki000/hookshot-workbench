@@ -7,7 +7,7 @@ import json
 import math
 import re
 import statistics
-from compare import signature
+from compare import SIGNATURE_VERSION, signature
 from common import text
 from hs_names import log_path
 
@@ -179,7 +179,7 @@ def collect(run, evidence, metadata):
     run, evidence = Path(run), Path(evidence)
     log = text(log_path(run))
     lines = log.splitlines()
-    signatures = Counter(signature(s) for s in lines if WARNING.search(s))
+    signatures = Counter(signature(s, roots=metadata.get('signature_roots')) for s in lines if WARNING.search(s))
     samples = [json.loads(s) for s in text(evidence / 'samples.jsonl').splitlines() if s]
     samples = [s for s in samples if s.get('own_pids')]
     events = [json.loads(s) for s in text(evidence / 'log-events.jsonl').splitlines() if s]
@@ -226,7 +226,8 @@ def collect(run, evidence, metadata):
             a, b, c = (ordered[j][1]['luma_mean'] for j in (i-1, i, i+1))
             if abs(a-c) <= 5 and abs(b-(a+c)/2) >= 40:
                 flash_candidates.append(ordered[i][0])
-    result = {'metrics': scalars, 'signatures': dict(signatures), 'images': images, 'missing': missing,
+    result = {'metrics': scalars, 'signatures': dict(signatures), 'signature_version': SIGNATURE_VERSION,
+            'images': images, 'missing': missing,
             'device_lines': [s for s in lines if re.search(r'vk: device \d|Vulkan.*driver', s)],
             'vram_log_lines': [s for s in lines if VRAM.search(s)], 'nocore_lines': nocore,
             'shader_pipeline_lines': [s for s in lines if ACTIVITY.search(s)],

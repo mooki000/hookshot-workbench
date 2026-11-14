@@ -78,7 +78,8 @@ class Store:
             bucket = records.setdefault(key, {'accepted': [], 'undisturbed': []})
             r = json.loads(body)
             value = {'night': night, 'disturbed': r['disturbed'], 'metrics': r['metrics'],
-                     'status': r['status'], 'signatures': r['signatures']}
+                     'status': r['status'], 'signatures': r['signatures'],
+                     'signature_version': r.get('signature_version', 1)}
             if len(bucket['accepted']) < 7:
                 bucket['accepted'].append(value)
             if not r['disturbed'] and len(bucket['undisturbed']) < 7:

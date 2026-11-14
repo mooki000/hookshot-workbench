@@ -4,16 +4,33 @@ import re
 import statistics
 
 
-def signature(line):
-    """Keep error words; strip timestamps, addresses, counters and simple POSIX paths.
+SIGNATURE_VERSION = 2
 
-    Path tokens are absolute, ASCII and space-free; Windows paths are not handled.
+
+def signature(line, *, roots=None):
+    """Strip known POSIX root prefixes, not resource identities.
+
+    roots maps stable labels to this run's absolute directories, longest first.
+    Only whole prefixes at token starts (optionally quoted/bracketed or key=)
+    match. No roots means no path removal; never guess a home or temporary path.
+    Path/URL tokens, including quoted spaces, retain their suffixes and numbers.
     """
     line = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', line)
-    line = re.sub(r'(?<![\w/\\:.-])/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*[A-Za-z0-9_-]', '<path>', line)
-    line = re.sub(r'\b(?:0x[0-9a-f]+|[0-9a-f]{8,})\b', '<addr>', line, flags=re.I)
-    line = re.sub(r'(?<![\w])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?', '<n>', line)
-    return re.sub(r'\s+', ' ', line).strip()
+    prefixes = {str(path).rstrip('/'): name for name, path in (roots or {}).items()
+                if str(path).startswith('/') and str(path).strip('/')}
+    if prefixes:
+        pattern = (r"""(?<!\S)((?:[A-Za-z_]\w*=)?[('"[{]*)(%s)"""
+                   r"""(?=/|$|[\s'")\]},;:!?]|\.(?:\s|$))""") % '|'.join(
+                       re.escape(path) for path in sorted(prefixes, key=len, reverse=True))
+        line = re.sub(pattern, lambda m: m[1] + '<' + prefixes[m[2]] + '>', line)
+    tokens = re.findall(r"""(?:[^\s"']|"[^"\n]*"|'[^'\n]*'|["'])+""", line)
+    for i, token in enumerate(tokens):
+        # Do not erase stable numeric/hex filenames, relative resources or URLs.
+        if '/' in token or '\\' in token:
+            continue
+        token = re.sub(r'\b(?:0x[0-9a-f]+|[0-9a-f]{8,})\b', '<addr>', token, flags=re.I)
+        tokens[i] = re.sub(r'(?<![\w])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?', '<n>', token)
+    return ' '.join(tokens)
 
 
 def band(values):

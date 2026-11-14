@@ -156,6 +156,20 @@ rewrite old results. The separate rolling-main regression adapter does not calcu
 
 The exact-window and history-transition tests (`test_metrics_worst_second.py`, `test_metric_history.py`)
 are repository-owned; they are not copied from live by the publication manifest.
+Warning signature form 2 replaces only explicit volatile POSIX directory prefixes with labelled roots
+(`<copy>`, `<run>`, `<evidence>`, `<socket>`, `<home>`, `<tmp>`), retaining resource suffixes. The scenario
+driver records its copy/run/evidence/socket directories and the inherited or scenario-overridden `HOME` and
+`TMPDIR` (`/tmp` when unset). Longest roots win, at complete token boundaries; quoted paths and roots containing
+spaces are supported. Stable absolute names, relative resources, Windows paths and URL queries remain intact,
+including numeric/hex resource names. Unknown roots are not guessed: `signature(line)` without `roots` preserves
+all paths. Generic `/tmp` removes only that prefix, not an unknown random child directory.
+
+Each collected scenario and exported baseline stores `signature_version`. Missing versions mean legacy form 1.
+Only accepted history of the same form feeds warning comparison; other metric/image histories are unchanged.
+The first otherwise-passing form-2 night seeds warning history automatically, as an ordinary first night does:
+no warning regression is claimed without comparable history. The next night detects new warnings; count bands
+still need three accepted matching-form nights. No manual database rewrite or reseeding is required. Existing
+crash/failure findings still block acceptance, and a resumed completed old-form scenario keeps its original version.
 
 The report names failures, changed tests, raw evidence, unjudged timings and available commit ranges. Tracker searches
 precede local issue-form drafts; nothing is posted. The shared `regress/regress.py` owns bisection and lift grouping.

@@ -128,7 +128,8 @@ def mutations():
     changes = {
         'historical-spread': ('width = max(3 * 1.4826 * mad, max(abs(x - mid) for x in values))', 'width = 0'),
         'disturbed-run': ("if kind in ('timing', 'memory') and disturbed:", 'if False:'),
-        'signature-normalization': ("def signature(line):", "def signature(line):\n    return line"),
+        'signature-normalization': ("def signature(line, *, roots=None):",
+                                    "def signature(line, *, roots=None):\n    return line"),
     }
     with tempfile.TemporaryDirectory() as temporary:
         for name, (before, after) in changes.items():

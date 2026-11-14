@@ -559,5 +559,6 @@ protection paths and coordination locks still name objects on this PC. No live m
 ["harness/test_hs_run.py", "hookshot", 1, "Independent synthetic fixture pinning an external game filename, environment, protocol, source or existing host-path contract."]
 ["harness/test_hs_run.py", "hookshot_log.txt", 1, "Independent synthetic fixture pinning an external game filename, environment, protocol, source or existing host-path contract."]
 ["harness/test_hs_run.py", "$R/hookshot_log.txt", 1, "Independent synthetic fixture pinning an external game filename, environment, protocol, source or existing host-path contract."]
+["nightly/test_compare_signature_paths.py", "longshot_log.txt", 1, "Independent synthetic fixture pinning an external game filename, environment, protocol, source or existing host-path contract."]
 ```
 <!-- kept-literals:end -->

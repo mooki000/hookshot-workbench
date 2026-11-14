@@ -41,6 +41,13 @@ class Run:
         self.meta = {'id': spec['id'], 'status': 'running', 'started': stamp(), 'timings': {},
                      'checks': [], 'settings': spec.get('settings', {}), 'save': spec.get('save'),
                      'intel': bool(spec.get('intel'))}
+        settings = self.meta['settings']
+        self.meta['signature_roots'] = {
+            'copy': str(self.copy.resolve()), 'run': str(self.run.resolve()),
+            'evidence': str(self.out.resolve()),
+            'home': str(settings.get('HOME', os.environ.get('HOME', ''))),
+            'tmp': str(settings.get('TMPDIR', os.environ.get('TMPDIR')) or '/tmp'),
+        }
         self.monitor = Monitor(config, copy, self.run, self.out)
         self.bridge, self.proc = None, None
         self.start = None
@@ -225,6 +232,7 @@ class Run:
         # A short path, private 0700, under the harness: Unix socket paths have a hard limit.
         socket_dir = HARN / 'nightly-local' / 'sockets' / slug(self.tag)
         socket_dir.mkdir(parents=True, mode=0o700, exist_ok=False)
+        self.meta['signature_roots']['socket'] = str(socket_dir.resolve())
         os.chmod(socket_dir, 0o700)
         sock = socket_dir / 'ctl'
         self.control_socket = sock

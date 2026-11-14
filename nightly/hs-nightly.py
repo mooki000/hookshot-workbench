@@ -75,7 +75,10 @@ def comparisons(store, night, current, history):
         current['comparisons'][metric] = decision
         if decision['state'] == 'regression':
             findings.append({'scenario': current['id'], 'kind': 'metric', 'metric': metric, **decision})
-    for finding in compare.compare_signatures(current['signatures'], [r['signatures'] for r in history]):
+    # Missing versions are legacy keys, not keys made by the currently loaded code.
+    signature_history = [r['signatures'] for r in history
+                         if r.get('signature_version', 1) == current.get('signature_version', 1)]
+    for finding in compare.compare_signatures(current['signatures'], signature_history):
         findings.append({'scenario': current['id'], 'kind': 'log-signature', **finding,
                          'log': log})
     for name, image in current['images'].items():
