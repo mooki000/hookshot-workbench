@@ -115,6 +115,18 @@ Co-op needs every player to reach one small relay by UDP. Corporate security pro
   that Mac, and do not install remote-access tools on it, without the owner's explicit word. It is his employer's.
 - Where co-op stands, what is proven and what the first playtest must show is in the co-op plan the private note
   points to. The work is on a pull request on the forge; ask the owner for its number.
+- **Known since the first two-PC session (2026-11-13, a Linux PC and a Windows PC on one home network):**
+  - Every player needs the same commit. The pull request's branch name is historical; build the commit its first
+    comment (the tester guide) names, and say that commit in every result.
+  - The game's own hosting listens on UDP 24680. The host's firewall has to let that port in from the other
+    players; the joiner needs nothing opened. With the port blocked the joiner shows only `Connecting: no answer
+    from the relay` and the host sits alone in its room: check the host's firewall before suspecting the game.
+  - Hosting on Windows worked once its own firewall prompt was accepted for private networks; hosting on the
+    Linux PC did not, because its firewall drops incoming traffic. So for a first Mac session, join a room that
+    the Windows PC hosts, or host on the Mac and expect macOS to ask about incoming connections. Report what it
+    asked and what you answered; change no other security setting.
+  - Use the home-network address the host's log prints, not a VPN or overlay address.
+  - Not yet shown anywhere: a Mac in a room, three players at once, a session across the internet.
 
 ## The harness on a Mac
 
