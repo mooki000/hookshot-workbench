@@ -7,7 +7,8 @@ updated at all. Looked at in November 2026 by static analysis of the binary, for
 [jobs.md](jobs.md) found the frame bound by the game's logic on the CPU, and the actors are most of that logic.
 
 **LS code:** `host/hos_main.c` (`hos_oot_is_player`, `hos_oot_lift_player`, the flight and the
-pouch calls), `nx2/oot_patches.py` (`patch_life`, `patch_movement`)
+pouch calls), `host/oot_coop_players.c` (request lifetime and placement),
+`nx2/oot_patches.py` (`patch_life`, `patch_movement`)
 **See also:** [jobs.md](jobs.md) (the pools, stage 5, the BaseProc phase), [player.md](player.md) (Link's movement, health
 and pouch), [maps.md](maps.md) (the layouts, the actor packs and ActorParam, the actor registry), [culling.md](culling.md),
 [events.md](events.md)
@@ -101,6 +102,22 @@ The other method slots GameActor overrides, from the engine's: 0, 1, 7–9, 11, 
 | `f_805cf0e0` | `Placement_ReadCreateParams` | Reads a placed actor's creation fields: Presence (FlagName, IsNegation, IsCheckLazy), ExtraCreateRadius, IsForceActive, IsShortCreateRadiusInHeavy, MoveRadius, IsPhysicsStable, IsInWater, ExternalParameter, … and the AreaCulling block (`f_805cefb0`) | read |
 | `f_805cefb0` | `Placement_ReadAreaCulling` | The AreaCulling block: AreaCullingActivationArea, AreaCullingTargetArea | read |
 | `f_80ed6f00` | `PreActorModelWorkers_Init` | Creates the PreActor model-composition workers: threads all named `PreActorModelCompose`, priority 26, each pinned to one of the selected cores 0 to 5. What a PreActor is exactly (a light stand-in for a far or sleeping actor) is a guess | read |
+
+### Request lifetime and placement
+
+These call roles come from `host/oot_coop_players.c` at `2f01e1b4bdb6e1629c54a998f0403519fe4e5c74`.
+They remain **guess**: the host's calling contract is not a fresh reading or test of each native body.
+Creation itself is `f_80392a70` above.
+
+| Function | Name | What it does | Sure |
+|---|---|---|---|
+| `f_8038fbd0` | `ActorRequest_Take` | Takes the actor from a completed create request for the caller. The host's `actor_take` calls it after the request reports ready, then tracks that actor's identity and lifetime | guess |
+| `f_8038fde0` | `ActorRequest_Drop` | Releases a create request that reports it was abandoned, without adopting an actor from it (`actor_take`) | guess |
+| `f_80b4e020` | `ActorRequest_FindPending` | Searches the pending-create queue using a matcher for the caller's retained request cell (`request_cancel`) | guess |
+| `f_80b4e6e0` | `ActorRequest_FreePending` | Cancels/releases the pending create request selected by the caller's queue check (`request_cancel`) | guess |
+| `f_80b4e2e0` | `ActorRequest_DeleteResult` | Cancels a request that is no longer pending by requesting removal of its actor result (`request_cancel`) | guess |
+| `f_800c6490` | `Actor_RequestDelete` | Requests generic actor removal for an already adopted actor (`puppet_remove`) | guess |
+| `f_80c8fd60` | `Actor_SetTransform` | Receives an actor and a row-major transform supplied by the host; the host also maintains the actor's known transform copies (`actor_place`) | guess |
 
 ### Resident actors
 

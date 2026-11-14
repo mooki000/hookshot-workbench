@@ -22,7 +22,7 @@ menu mouse and the text speed and size options use them.
 | `f_8045b970` | `Layout_SetTextWorker` | The text setter's worker (loops over the text panes) | read |
 | `f_80a8a480` | `Text_FromMessageName(&text, &source)` | Makes a text from `source` = `{char *data, int size}`, **as a message's name**: a plain string gives "MsgNotFound" | tested |
 | `f_80a8afe0` | `Text_FromMessage` | Makes a text from a message file and label, with arguments | read |
-| `f_80183b70` | `MsgArgs_Set(ctx, value, hash)` | Sets a message argument (by murmur3 hash) | read |
+| `f_80183b70` | `MsgArgs_Set(ctx, value, hash)` | Sets a message argument (by murmur3 hash); the co-op source's `SetInt` name is not reconciled with this interpretation (see *Open questions*) | read |
 | `f_8379ac00` | `TextPane_FitText` | Fits a text pane's text to its box | read |
 | `f_8078e2b0` | `Layout_FindPane(layout, name)` | A pane by name, of any kind (the menu mouse finds the buttons with it) | tested |
 | `f_8078fcb0` | `Pane_Position(pane)` | A pane's position on screen, in `s0` and `s1` | tested |
@@ -106,3 +106,10 @@ its divider and the medallion frame are drawn live, on top.
 - The UI shows and hides through animations. Pane flags are not a dependable switch.
 - Panes found by their place in the table must be checked: the table's order at run time is not the layout file's, and the
   flags at run time are not the file's either (the file has `0x0255481b` where the game has `0x8011386b`).
+
+## Open questions
+
+- `f_80183b70` is named `MsgArgs_Set` here, but `host/oot_coop.c` at
+  `2f01e1b4bdb6e1629c54a998f0403519fe4e5c74` calls it `SetInt(mgr, value, hash)` through `SET_INT_FN`.
+  Which interpretation fits both uses? A generic setter shared by the two is only a **guess**.
+  Neither name is changed here, and the row's **read** confidence is not new confirmation of the co-op binding.

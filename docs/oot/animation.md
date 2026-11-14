@@ -8,8 +8,8 @@ is the ninth-hottest function in the profiles. Looked at in November 2026 by sta
 frame-rate work: which parts are hot, what they cost per bone or per actor, and which of them count frames rather than
 time.
 
-**LS code:** none yet. The step these parts read is the one `patch_frame_seconds` sets
-(`nx2/oot_patches.py`, [frame-time.md](frame-time.md)).
+**LS code:** `host/oot_coop_players.c` (named-node requests and frame setting, current-frame sampling).
+The step these parts read is the one `patch_frame_seconds` sets (`nx2/oot_patches.py`, [frame-time.md](frame-time.md)).
 **See also:** [actors.md](actors.md) (the five jobs, the LOD and calc-skip settings), [frame-time.md](frame-time.md) (the
 step and the frame-time keeper), [jobs.md](jobs.md), [culling.md](culling.md) (the sphere queries),
 [hot-path.md](hot-path.md) (the hot ranks), [maps.md](maps.md) (the ActorInfo row's animation fields)
@@ -75,6 +75,19 @@ The AS module's vtable is `0x84c7ab88` (slot 2 the calc, slot 7 the set-up, slot
 | `f_83b17cf0` | `AnimationComponent_Bind` | The Animation component's resources (976 instructions): `Model/%s.anim.bfres`, the events `AnimationEvent/Animation/*.baev`, `Model/%s.%s.bfres` and RetargetScale | guess |
 | `f_809727c0` | `ModelResources_Paths` | Builds an actor's model paths: `Model/%s.%s.bfres`, `Model/%s.anim.bfres` from its ModelProjectName, and the PreActorRenderInfo | guess |
 | `f_8299a830` | `QueryASGetCurrentFrame_Evaluate` | The script query's slot 39: from the node's actor (`+0x1f0` of its owner), the components (`actor+0x270`), the AS reference (`+0x40`, then `+0x18` twice); for the slot index input below the slot count (`AS+0x18`), takes slot `[AS+0x20] + 0x48 × i`, whose `+0x10c` is the current frame (a float); outputs it and frame ÷ the clip's length (its node's vtable `+0x40`, at least 1) | read |
+
+### Actor requests, duration and frame setting
+
+These rows retain **read** from the supported-build static investigation of the accessors and request routine.
+`host/oot_coop_players.c` at `2f01e1b4bdb6e1629c54a998f0403519fe4e5c74` calls the request and setter
+from `anim_play`; its `AS_SLOT_FRAME` comment and `anim_read` distinguish the current frame from duration.
+`f_8299a830` above reads the two values separately.
+
+| Function | Name | What it does | Sure |
+|---|---|---|---|
+| `f_837d57c0` | `ASControl_GetDuration` | Validates the slot and active node, then dispatches its duration getter; unavailable returns zero. This is not the slot's current playback frame (`AS_SLOT_FRAME`) | read |
+| `f_802222a0` | `Actor_RequestASNode` | Takes an actor, slot and locally named animation-node request, applies rate/start/blend options and returns whether the native request succeeds; already-playing can also succeed. Success alone does not establish visible bone output (`anim_play`) | read |
+| `f_837d5d70` | `ASControl_SetFrame` | Resolves the slot's active animation node and dispatches a frame-setting operation with the supplied float; absent/out-of-range nodes return without action (`anim_play`) | read |
 
 ### The components that carry animation
 
